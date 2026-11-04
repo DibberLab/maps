@@ -40,6 +40,43 @@ const bases = LF.bases = {
   osm:  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
         { maxNativeZoom:19, maxZoom:20, attribution:'&copy; OpenStreetMap contributors' })
 };
+/* ---------- Sharp close-up imagery (zoom 17+) ----------
+   The USGS tiles above stop at zoom 16. Past that, these image services draw
+   sharper imagery on request: WI DNR leaf-off (WROC 2020/2025, down to ~3 in
+   pixels, Wisconsin only) and USGS NAIP Plus (~1 ft, nationwide, summer).
+   They're slow (seconds per tile), so they sit on top of the stretched zoom-16
+   tiles, which show at once. 512 px tiles halve the number of requests. */
+const MERC = 20037508.342789244;
+const ExportTiles = L.TileLayer.extend({
+  initialize(url, extra, opts){ this._svc = url; this._extra = extra || ''; L.TileLayer.prototype.initialize.call(this, '', opts); },
+  /* z, x, y in the usual 256-px tile scheme: a 512-px tile at map zoom Z covers one zoom Z-1 tile. */
+  urlFor(c){
+    const span = 2 * MERC / Math.pow(2, c.z), x0 = -MERC + c.x * span, y1 = MERC - c.y * span;
+    const b = [x0, y1 - span, x0 + span, y1].map(v => v.toFixed(2)).join(',');
+    return `${this._svc}/exportImage?bbox=${b}&bboxSR=3857&imageSR=3857&size=512,512&format=jpgpng&f=image${this._extra}`;
+  },
+  getTileUrl(c){ return this.urlFor({ x:c.x, y:c.y, z:c.z + this.options.zoomOffset }); },
+  /* Overlap neighbours by a pixel: phones with fractional pixel ratios otherwise show hairline seams. */
+  _initTile(tile){ L.TileLayer.prototype._initTile.call(this, tile); const s = this.getTileSize(); tile.style.width = (s.x + 1) + 'px'; tile.style.height = (s.y + 1) + 'px'; }
+});
+const HD = { tileSize:512, zoomOffset:-1, minZoom:17, maxZoom:20, maxNativeZoom:20, keepBuffer:1, crossOrigin:true };
+const WI_BOUNDS = L.latLngBounds([42.4, -92.95], [47.4, -86.2]);
+const closeup = LF.closeup = {
+  naip: new ExportTiles('https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer', '&bandIds=0,1,2',
+    Object.assign({ zIndex:2, attribution:'Close-up: USGS NAIP' }, HD)),
+  wi: new ExportTiles('https://dnrmaps.wi.gov/arcgis_image/rest/services/DW_Imagery/EN_Image_Basemap_Latest_Leaf_Off/ImageServer', '',
+    Object.assign({ zIndex:3, bounds:WI_BOUNDS, attribution:'Close-up: WI DNR / WROC leaf-off' }, HD))
+};
+/* Which close-up layers a setting uses: leaf-off draws WI on top of NAIP (NAIP fills gaps and other states). */
+const CLOSEUP = { leafoff:['naip', 'wi'], summer:['naip'], off:[] };
+let closeKey = CLOSEUP[LF.prefs.get('closeup', 'leafoff')] ? LF.prefs.get('closeup', 'leafoff') : 'leafoff';
+function syncCloseup(){
+  const want = (baseKey === 'hyb' || baseKey === 'img') ? CLOSEUP[closeKey] : [];
+  Object.entries(closeup).forEach(([k, l]) => { if(want.includes(k)){ if(!map.hasLayer(l)) l.addTo(map); } else if(map.hasLayer(l)) map.removeLayer(l); });
+}
+LF.closeupLayers = (key) => CLOSEUP[key || closeKey].map(k => closeup[k]);
+LF.getCloseup = () => closeKey;
+
 let baseKey = null;
 function setBase(k){
   if(!bases[k]) k = 'hyb';
@@ -48,11 +85,16 @@ function setBase(k){
   baseKey = k; bases[k].addTo(map).bringToBack();
   document.getElementById('b-'+k).checked = true;
   prefs.set('base', k);
+  syncCloseup();
 }
 LF.setBase = setBase;
 LF.getBase = () => baseKey;
 setBase(fromLink.base || prefs.get('base', 'hyb'));
 document.querySelectorAll('input[name=base]').forEach(r => r.addEventListener('change', () => setBase(r.value)));
+document.querySelectorAll('input[name=closeup]').forEach(r => {
+  r.checked = r.value === closeKey;
+  r.addEventListener('change', () => { closeKey = r.value; prefs.set('closeup', closeKey); syncCloseup(); });
+});
 
 map.createPane('publicPane'); map.getPane('publicPane').style.zIndex = 350;
 map.createPane('parcelPane'); map.getPane('parcelPane').style.zIndex = 420;

@@ -62,6 +62,20 @@ async function fetchAll(src, b, signal, onPage){
 }
 
 /* ---------- Tiles ---------- */
+/* Sharp close-up imagery (map zoom 17-18) for the box, from the layers the close-up setting uses. */
+const HD_TILE_KB = 70, HD_MAX_MAP_ZOOM = 18;
+function closeupList(b){
+  const urls = [], box = L.latLngBounds(b);
+  for(const l of LF.closeupLayers()){
+    if(l.options.bounds && !l.options.bounds.intersects(box)) continue;
+    for(let mz = 17; mz <= HD_MAX_MAP_ZOOM; mz++){
+      const z = mz - 1;   // a 512-px tile at map zoom mz covers one 256-scheme tile at mz-1
+      const nw = map.project([b[1][0], b[0][1]], z).divideBy(256).floor(), se = map.project([b[0][0], b[1][1]], z).divideBy(256).floor();
+      for(let x = nw.x; x <= se.x; x++) for(let y = nw.y; y <= se.y; y++) urls.push(l.urlFor({ x, y, z }));
+    }
+  }
+  return urls;
+}
 function tileList(b, bases, maxZ){
   const urls = [];
   for(const k of bases){
@@ -83,7 +97,7 @@ async function save(opts){
   if(job){ flash('An area is already downloading'); return; }
   if(!('caches' in window)){ flash('This browser cannot save maps for offline use.', 5000); return; }
   const id = opts.id || db.newId(), ctl = new AbortController();
-  const tiles = tileList(opts.bounds, opts.bases, opts.maxZoom);
+  const tiles = tileList(opts.bounds, opts.bases, opts.maxZoom).concat(opts.hd ? closeupList(opts.bounds) : []);
   const srcs = SOURCES.filter(s => !s.box || inBox(opts.bounds, s.box));
   job = { id, ctl, done:0, total:tiles.length + srcs.length, bytes:0 };
   chip.hidden = false; progress();
@@ -126,7 +140,7 @@ async function save(opts){
     }
     await db.put('areadata', data);
     const parcels = data.wi.length + data.mn.length;
-    const area = await db.put('areas', { id, name:opts.name, bounds:opts.bounds, bases:opts.bases, maxZoom:opts.maxZoom,
+    const area = await db.put('areas', { id, name:opts.name, bounds:opts.bounds, bases:opts.bases, maxZoom:opts.maxZoom, hd:!!opts.hd,
       tiles:tiles.length - failed, tilesFailed:failed, bytes:dataBytes + tileBytes, parcels,
       publicLand:data.padus.length + data.widnr.length + data.mndnr.length, created:opts.created || Date.now() });
     loaded.delete(id);
@@ -251,22 +265,25 @@ function saveSheet(){
       <div class="lbl">Detail</div>
       <label class="opt"><input type="radio" data-act="o-est" name="o-z" value="16" checked> Full (closest zoom)</label>
       <label class="opt"><input type="radio" data-act="o-est" name="o-z" value="15"> Lighter (about a quarter of the size)</label>
+      <label class="opt"><input type="checkbox" data-act="o-est" id="o-hd"> Also sharp close-up aerial (zoom 17-18; much bigger, slower)</label>
       <p id="o-est" class="estimate">Measuring…</p>
       <p class="small" id="o-store"></p>
       <div class="btnrow acts"><button type="button" class="btn primary" data-act="o-go">Download</button><button type="button" class="btn" data-act="o-cancel">Cancel</button></div>
       <p class="small">Street map (OpenStreetMap) can't be saved: its rules don't allow bulk downloads.</p>
     </form>`;
   const pick = () => ({ bases:Array.from(document.querySelectorAll('input[name=o-base]:checked')).map(i => i.value),
-                        maxZoom:+(document.querySelector('input[name=o-z]:checked') || { value:16 }).value });
+                        maxZoom:+(document.querySelector('input[name=o-z]:checked') || { value:16 }).value,
+                        hd:!!(document.getElementById('o-hd') || {}).checked });
   const update = () => {
     const el = document.getElementById('o-est'); if(!el) return;
     const b = visibleBounds(), o = pick();
     if(box) box.setBounds(b); else box = L.rectangle(b, { pane:'hiPane', color:'#ffffff', weight:2, dashArray:'8 6', fillColor:'#ffffff', fillOpacity:.06, interactive:false }).addTo(map);
-    const n = o.bases.length ? tileCount(b, o.bases, o.maxZoom) : 0;
+    const hdN = o.hd ? closeupList(b).length : 0;
+    const n = (o.bases.length ? tileCount(b, o.bases, o.maxZoom) : 0) + hdN;
     est = { bounds:b, tiles:n, ...o };
     const go = document.querySelector('[data-act=o-go]');
     const parcelsTxt = parcelsEst == null ? 'counting parcels…' : parcelsEst.toLocaleString('en-US') + ' parcels';
-    const mb = n * TILE_KB * 1024 + (parcelsEst || 0) * PARCEL_KB * 1024;
+    const mb = (n - hdN) * TILE_KB * 1024 + hdN * HD_TILE_KB * 1024 + (parcelsEst || 0) * PARCEL_KB * 1024;
     if(!o.bases.length) el.textContent = 'Pick at least one map.';
     else if(n > MAX_TILES) el.innerHTML = `<b>Too big:</b> ${n.toLocaleString('en-US')} map tiles. Zoom in or pick Lighter detail (limit ${MAX_TILES.toLocaleString('en-US')}).`;
     else el.textContent = `About ${fmtMB(mb)}: ${n.toLocaleString('en-US')} map tiles, ${parcelsTxt}.`;
@@ -290,7 +307,7 @@ function saveSheet(){
       if(act === 'o-cancel') LF.closeSheet();
       if(act === 'o-go' && est && est.tiles <= MAX_TILES){
         const name = document.getElementById('o-name').value.trim() || 'Offline area ' + new Date().toLocaleDateString('en-US', { month:'short', day:'numeric' });
-        const opts = { name, bounds:est.bounds, bases:est.bases, maxZoom:est.maxZoom };
+        const opts = { name, bounds:est.bounds, bases:est.bases, maxZoom:est.maxZoom, hd:est.hd };
         LF.closeSheet();
         save(opts);
       }
@@ -303,7 +320,7 @@ function saveSheet(){
 async function listSheet(){
   await loadAreas();
   const rows = areas.sort((a, b) => (b.updated || 0) - (a.updated || 0)).map(a => `<div class="area-row">
-      <div><b>${esc(a.name)}</b><div class="small">Saved ${new Date(a.updated || a.created).toLocaleDateString('en-US')} · ${fmtMB(a.bytes || 0)} · ${(a.parcels || 0).toLocaleString('en-US')} parcels · ${a.bases.map(k => BASES[k] || k).join(', ')}${a.tilesFailed ? ` · ${a.tilesFailed} tiles missing` : ''}</div></div>
+      <div><b>${esc(a.name)}</b><div class="small">Saved ${new Date(a.updated || a.created).toLocaleDateString('en-US')} · ${fmtMB(a.bytes || 0)} · ${(a.parcels || 0).toLocaleString('en-US')} parcels · ${a.bases.map(k => BASES[k] || k).join(', ')}${a.hd ? ' + sharp close-up' : ''}${a.tilesFailed ? ` · ${a.tilesFailed} tiles missing` : ''}</div></div>
       <div class="btnrow"><button class="btn" data-act="o-show" data-id="${esc(a.id)}">Show</button><button class="btn" data-act="o-refresh" data-id="${esc(a.id)}">Update</button><button class="btn danger" data-act="o-del" data-id="${esc(a.id)}">Delete</button></div>
     </div>`).join('');
   const body = '<div class="btnrow acts"><button class="btn primary" data-act="o-new">Save a new area</button></div>' +
@@ -313,7 +330,7 @@ async function listSheet(){
     const a = areas.find(x => x.id === el.dataset.id);
     if(act === 'o-new') saveSheet();
     if(act === 'o-show' && a){ LF.closeSheet(); map.fitBounds(a.bounds); }
-    if(act === 'o-refresh' && a){ LF.closeSheet(); save({ id:a.id, name:a.name, bounds:a.bounds, bases:a.bases, maxZoom:a.maxZoom, created:a.created }); }
+    if(act === 'o-refresh' && a){ LF.closeSheet(); save({ id:a.id, name:a.name, bounds:a.bounds, bases:a.bases, maxZoom:a.maxZoom, hd:a.hd, created:a.created }); }
     if(act === 'o-del' && a && confirm(`Delete the offline copy of “${a.name}”? (${fmtMB(a.bytes || 0)})`)){ await remove(a.id); listSheet(); flash('Offline area deleted'); }
   } });
   storageLine().then(t => { const el = document.getElementById('o-store'); if(el) el.textContent = t; });

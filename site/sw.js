@@ -6,7 +6,7 @@
    is one, else the network. Offline parcel and public land records live in
    IndexedDB.
    Bump VERSION when the SHELL list changes. */
-const VERSION = 'lf-shell-5';
+const VERSION = 'lf-shell-6';
 const FONTS = 'lf-fonts-1';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.json',
@@ -57,6 +57,9 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if(url.origin === self.location.origin && url.pathname.startsWith('/api/')) return;   // accounts and sync: always live, never cached
   if(url.origin === self.location.origin) e.respondWith(networkFirst(req));
-  else if(url.hostname === 'basemap.nationalmap.gov') e.respondWith(caches.match(req.url).then(hit => hit || fetch(req)));
+  // Map imagery: a saved offline area's copy first, else the network.
+  else if(url.hostname === 'basemap.nationalmap.gov' || url.hostname === 'imagery.nationalmap.gov' ||
+          (url.hostname === 'dnrmaps.wi.gov' && url.pathname.startsWith('/arcgis_image/')))
+    e.respondWith(caches.match(req.url).then(hit => hit || fetch(req)));
   else if(url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') e.respondWith(cacheFirst(req));
 });

@@ -184,7 +184,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
 
   // 9. onX-style KML: nested folders kept, item details (id, color, style, width, icon name) on each card.
   // Wait for the list that's showing now: a closed sheet keeps its old buttons in the page.
-  await tool('list'); await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Saved on this device")'); await page.waitForTimeout(200);
+  await tool('list'); await page.waitForSelector('#sheet:not([hidden]) h2:has-text("My content")'); await page.waitForTimeout(200);
   await page.setInputFiles('#sheetBody input[data-act=import]', require('path').join(__dirname, 'fixtures/onx-sample.kml'));
   await page.waitForFunction(() => /Imported 3 items/.test(document.querySelector('#zoomHint').textContent), null, { timeout:8000 }).catch(async () => console.log('   import message:', await page.textContent('#zoomHint')));
   const got = await page.evaluate(async () => { const w = await LF.db.all('waypoints'), d = await LF.db.all('drawings');
@@ -201,6 +201,20 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(/Line style\s*Dashed/.test(card) && /Line width\s*6/.test(card) && /Imported ID\s*05f03d79/.test(card) && /#ff0000/.test(card) && /Folder\s*onx-sample/.test(card),
     'card shows folder, color, style, width and imported id');
   await page.screenshot({ path: path.join(OUT, 'tools-card.png') });
+
+  // 9b. The logo opens the menu: account, content by type with counts, folders; Waypoints opens a filtered list.
+  await page.click('#closeSheet');
+  await page.click('#menuBtn');
+  await page.waitForSelector('#menu:not([hidden]) .mi[data-m=waypoints] .n');
+  const wpCount = await page.textContent('.mi[data-m=waypoints] .n');
+  check(+wpCount >= 2 && await page.locator('.mi[data-m=folder]').count() >= 3 && /Tester/.test(await page.textContent('.mi.acct')),
+    `menu shows the account, ${wpCount} waypoints and the folders`);
+  await page.screenshot({ path: path.join(OUT, 'tools-menu.png') });
+  await page.click('.mi[data-m=waypoints]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Waypoints")');
+  check(await page.locator('#sheetBody .row-wrap').count() === +wpCount && await page.isHidden('#menu'), 'Waypoints opens the list filtered to waypoints');
+  await page.click('[data-act=filter][data-t=""]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("My content")');
 
   // 10. Folders in the list, select all, bulk move and bulk delete.
   await page.click('#closeSheet');

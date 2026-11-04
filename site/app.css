@@ -269,3 +269,33 @@ form.edit select{display:block;width:100%;margin-top:4px}
 .icons{max-height:220px;overflow:auto;padding:2px}
 
 .swatch-sm{display:inline-block}
+
+/* Main menu (the logo) */
+button.brand{border:0;cursor:pointer;display:flex;align-items:center;gap:0;font:700 22px/1 var(--display)}
+button.brand .burger{margin-right:12px}
+.burger{display:inline-block;width:16px;height:2px;background:currentColor;position:relative;margin-right:2px}
+.burger::before,.burger::after{content:'';position:absolute;left:0;width:16px;height:2px;background:currentColor}
+.burger::before{top:-5px}.burger::after{top:5px}
+.scrim{position:fixed;inset:0;z-index:1009;background:rgba(0,0,0,.35)}
+.scrim[hidden],.menu[hidden]{display:none}
+.menu{position:fixed;z-index:1010;top:0;bottom:0;left:0;width:min(320px,86vw);background:var(--panel);box-shadow:var(--shadow);overflow:auto;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 14px calc(16px + env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px))}
+@media (prefers-reduced-motion:no-preference){.menu{animation:slidein .18s ease-out}@keyframes slidein{from{transform:translateX(-24px);opacity:.6}}}
+.menu-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.brand-sm{font:700 20px/1 var(--display);letter-spacing:.04em;text-transform:uppercase}
+.brand-sm span{color:var(--blaze)}
+.menu h3{font:700 14px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+.mi{display:flex;align-items:center;gap:12px;width:100%;border:0;background:transparent;text-align:left;padding:10px 8px;border-radius:6px;cursor:pointer;font-size:15px;min-height:44px}
+.mi:hover{background:var(--panel-2)}
+.mi svg{flex:none;color:var(--muted)}
+.mi>span:not(.n){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi .n{font-size:13px;color:var(--muted);background:var(--panel-2);border-radius:99px;padding:1px 9px}
+.mi.acct{background:var(--panel-2);margin-top:4px}
+.mi.acct svg{color:var(--blaze)}
+.mi.acct>span{display:flex;flex-direction:column;white-space:normal}
+.menu-foot{margin-top:18px}
+.chips-row{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;margin-bottom:2px}
+.fchip{flex:none;border:1px solid var(--line);background:var(--panel-2);border-radius:99px;padding:6px 12px;font-weight:600;cursor:pointer;font-size:14px}
+.fchip span{color:var(--muted);font-weight:500}
+.fchip.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.fchip.on span{color:inherit;opacity:.75}

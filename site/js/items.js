@@ -309,7 +309,8 @@ LF.items = {
   newTrack(t){ edit('tracks', t, true); },
   goto,
   editTrack(id){ db.get('tracks', id).then(t => t && edit('tracks', t, true)); },
-  list
+  list, counts:async () => { const all = await allItems(); const c = { all:all.length, folders:folderNames(all).map(f => [f, all.filter(i => cleanFolder(i.r.folder) === f).length]) };
+    Object.keys(TYPES).forEach(t => { c[t] = all.filter(i => typeOf(i) === t).length; }); return c; }
 };
 
 /* ---------- Go to ---------- */
@@ -350,7 +351,10 @@ async function setHidden(store, id, hidden){
    sync with the items and exist while something is in them. Select mode adds checkboxes for bulk
    delete / move / hide / show / export. Collapsed folders are remembered per device. */
 const NO_FOLDER = '';
-let selecting = false, chosen = new Set();
+let selecting = false, chosen = new Set(), filter = { type:null, folder:null };
+/* What the list shows: a type (waypoints, tracks, line, area) and/or one folder, or everything. */
+const TYPES = { waypoints:'Waypoints', tracks:'Tracks', line:'Lines', area:'Areas' };
+const typeOf = i => i.store === 'drawings' ? (i.r.kind === 'circle' ? 'area' : i.r.kind) : i.store;
 const keyOf = (store, r) => store + ':' + r.id;
 const cleanFolder = f => geo.folderName(geo.folderPath(f));
 
@@ -366,10 +370,16 @@ async function allItems(){
 }
 const folderNames = items => Array.from(new Set(items.map(i => cleanFolder(i.r.folder)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
-async function list(){
+async function list(opts){
   if(!(await db.ready())){ flash('This browser is blocking on-device storage.', 5000); return; }
+  if(opts) filter = { type:opts.type || null, folder:opts.folder != null ? opts.folder : null };
   const sheetEl = document.getElementById('sheet'), keepScroll = !sheetEl.hidden && LF.sheetBody.querySelector('.folders') ? sheetEl.scrollTop : 0;
-  const items = await allItems();
+  const everything = await allItems();
+  const items = everything.filter(i => (!filter.type || typeOf(i) === filter.type) && (filter.folder == null || cleanFolder(i.r.folder) === filter.folder));
+  const counts = { all:everything.length }; Object.keys(TYPES).forEach(t => { counts[t] = everything.filter(i => typeOf(i) === t).length; });
+  const chips = '<div class="chips-row">' + [['', 'All', counts.all]].concat(Object.entries(TYPES).map(([k, v]) => [k, v, counts[k]])).map(([k, v, n]) =>
+      `<button class="fchip${(filter.type || '') === k && filter.folder == null ? ' on' : ''}" data-act="filter" data-t="${k}">${v} <span>${n}</span></button>`).join('') +
+    (filter.folder != null ? `<button class="fchip on" data-act="filter" data-t="">📁 ${esc(filter.folder || 'Not in a folder')} ✕</button>` : '') + '</div>';
   const live = new Set(items.map(i => keyOf(i.store, i.r)));
   chosen = new Set(Array.from(chosen).filter(k => live.has(k)));
   const closed = new Set(LF.prefs.get('foldersClosed', []));
@@ -407,8 +417,8 @@ async function list(){
       '<button class="btn" data-act="gpx-all">Export GPX</button><button class="btn" data-act="kml-all">Export KML</button>' +
       (items.some(i => i.r.hidden) ? '<button class="btn" data-act="show-all">Show all on map</button>' : '') +
       '<label class="btn">Import GPX/KML<input type="file" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml,text/xml,application/xml" hidden data-act="import"></label></div>';
-  const body = bar + (items.length ? '<div class="folders">' + Array.from(groups).map(([f, arr]) => folderBlock(f, arr)).join('') + '</div>'
-      : '<p class="loading">Nothing saved yet. Use the + button to drop a waypoint, draw, or record a track.</p>') +
+  const body = chips + bar + (items.length ? '<div class="folders">' + Array.from(groups).map(([f, arr]) => folderBlock(f, arr)).join('') + '</div>'
+      : `<p class="loading">${everything.length ? 'Nothing here. Tap All to see everything.' : 'Nothing saved yet. Use the + button to drop a waypoint, draw, or record a track.'}</p>`) +
     '<p class="note">Folders: pick one when you edit an item, or select several and Move to folder. KML imports keep their folders; other imports go into a folder named after the file.</p>';
 
   const pickedItems = () => items.filter(i => chosen.has(keyOf(i.store, i.r)));
@@ -417,8 +427,10 @@ async function list(){
   const setFolder = async (arr, f) => { for(const i of arr){ const r = Object.assign({}, i.r); if(f) r.folder = f; else delete r.folder; await db.put(i.store, r); } };
   const stamp = new Date().toISOString().slice(0, 10);
 
-  LF.showSheet(`<h2>Saved on this device</h2>`, body, { onAct: async (act, el) => {
+  const title = filter.folder != null ? (filter.folder || 'Not in a folder') : filter.type ? TYPES[filter.type] : 'My content';
+  LF.showSheet(`<h2>${esc(title)}</h2>`, body, { onAct: async (act, el) => {
     const f = el.dataset.f;
+    if(act === 'filter'){ selecting = false; chosen.clear(); return list({ type:el.dataset.t || null }); }
     if(act === 'open') open(el.dataset.s, el.dataset.id, { fly:true });
     if(act === 'vis'){ await setHidden(el.dataset.s, el.dataset.id, !el.checked); list(); }
     if(act === 'fold'){ closed.has(f) ? closed.delete(f) : closed.add(f); LF.prefs.set('foldersClosed', Array.from(closed)); el.closest('.folder').classList.toggle('closed'); el.setAttribute('aria-expanded', String(!closed.has(f))); }

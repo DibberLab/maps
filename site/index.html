@@ -23,7 +23,7 @@
 <div id="map" aria-label="Map"></div>
 
 <div class="bar">
-  <div class="brand">Line<span>·</span>Fence</div>
+  <button class="brand" id="menuBtn" aria-label="Menu: your content and account" aria-expanded="false" aria-controls="menu"><i class="burger" aria-hidden="true"></i>Line<span>·</span>Fence</button>
   <form class="search" id="searchForm" role="search">
     <input id="q" type="search" placeholder="Address, town, or 45.78, -92.38" autocomplete="off" aria-label="Search">
     <button type="submit">Go</button>
@@ -61,6 +61,12 @@
   <button class="tool" data-gated data-tool="list"><span class="ti"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></span>My waypoints, tracks &amp; drawings<span class="small">list, export, import GPX/KML</span></button>
   <p class="small">Tracks record while Line Fence is open. Phones pause location for web apps when the screen is off, so the screen stays on while recording.</p>
 </div>
+
+<div class="scrim" id="menuScrim" hidden></div>
+<nav class="menu" id="menu" hidden aria-label="Main menu">
+  <div class="menu-head"><span class="brand-sm">Line<span>·</span>Fence</span><button class="close" aria-label="Close menu">✕</button></div>
+  <div id="menuBody"></div>
+</nav>
 
 <div class="strip" id="strip" hidden><div id="stripText"></div><div class="btnrow" id="stripBtns"></div></div>
 
@@ -144,6 +150,7 @@
 <script src="js/account.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/menu.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

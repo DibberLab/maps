@@ -37,15 +37,16 @@ function query(url, latlng, fields, opts){
     const q = L.esri.query({ url });
     if(opts.nearby) q.nearby(latlng, opts.nearby); else q.intersects(latlng);
     if(opts.where) q.where(opts.where);
-    q.returnGeometry(!opts.nearby);
+    q.returnGeometry(!opts.nearby && opts.geometry !== false);
     if(fields) q.fields(fields);
     q.run((err,fc)=> res(err || !fc ? { err: err || true, features:[] } : { features: fc.features||[] }));
   }), { features:[] });
 }
-function identify(url, latlng, layers){
+function identify(url, latlng, layers, geom){
   return timed(new Promise(res=>{
-    L.esri.identifyFeatures({ url }).on(map).at(latlng).tolerance(2).layers(layers || 'visible').returnGeometry(false)
-      .run((err,fc,raw)=> res(err ? { err, results:[] } : { results:(raw && raw.results)||[] }));
+    const t = L.esri.identifyFeatures({ url }).on(map).at(latlng).tolerance(2).layers(layers || 'visible').returnGeometry(!!geom);
+    if(geom){ t.params.maxAllowableOffset = 0.0002; t.params.geometryPrecision = 5; }   // ~20 m: whole properties stay small
+    t.run((err,fc,raw)=> res(err ? { err, results:[] } : { results:(raw && raw.results)||[] }));
   }), { results:[] });
 }
 const both = (a, b) => Promise.all([a, b]).then(([x, y]) => ({ err: x.err && y.err, results: x.results.concat(y.results) }));
@@ -106,29 +107,103 @@ async function inspect(ll){
     wi: inWI(ll) ? query(SRC.wiParcels, ll, WI_FIELDS) : null,
     mn: inMN(ll) ? query(SRC.mnParcels, ll, MN_FIELDS) : null,
     mncov: inMN(ll) ? query(SRC.mnCoverage, ll, ['countyname','gac_open_approval','viewer_url','data_url']) : null,
-    padus: query(SRC.padus, ll, ['Mang_Type','Mang_Name','Des_Tp','Unit_Nm','Pub_Access','DOCACRES']),
-    widnr: inWI(ll) ? identify(SRC.wiDnr, ll) : null,
+    padus: query(SRC.padus, ll, ['OBJECTID','Mang_Type','Mang_Name','Des_Tp','Unit_Nm','Pub_Access','SUM_GIS_Acres'], { geometry:false }),
+    widnr: inWI(ll) ? identify(SRC.wiDnr, ll, 'visible', true) : null,
     wiclosed: inWI(ll) ? identify(SRC.wiClosed, ll) : null,
     wimfl: inWI(ll) && on.wimfl ? query(SRC.wiMfl, ll, MFL_FIELDS, { nearby:300, where:'AC_OP_PLS > 0' }).then(mflResults) : null,
-    mndnr: inMN(ll) ? both(identify(SRC.mnDnr, ll, 'visible:' + LF.MN_DNR_LAYER), identify(SRC.mnWia, ll)) : null
+    mndnr: inMN(ll) ? both(identify(SRC.mnDnr, ll, 'visible:' + LF.MN_DNR_LAYER, true), identify(SRC.mnWia, ll, 'visible', true)) : null
   };
   const r = {}; await Promise.all(Object.entries(jobs).map(async([k,p])=>{ r[k] = p ? await p : null; }));
   if(seq !== clickSeq) return;
   render(ll, r);
 }
 
+/* ---------- Public land: the whole unit the tap falls in ---------- */
+const MANAGERS = { SDNR:'State DNR', SFW:'State fish & wildlife agency', SPR:'State parks', SLB:'State land board (BCPL)', SDOF:'State forestry',
+  OTHS:'Other state agency', USFS:'US Forest Service', FWS:'US Fish & Wildlife Service', NPS:'National Park Service', BLM:'Bureau of Land Management',
+  USACE:'US Army Corps of Engineers', BOR:'Bureau of Reclamation', DOD:'Dept. of Defense', OTHF:'Other federal agency',
+  CNTY:'County', CITY:'City', RWD:'Regional water district', REG:'Regional agency', OTHR:'Other', UNK:'Unknown' };
+const DESIG = { NF:'National Forest', NWR:'National Wildlife Refuge', NP:'National Park', NRA:'National Recreation Area', WA:'Wilderness Area',
+  SCA:'State conservation area', SP:'State park', SREC:'State recreation area', SW:'State wilderness', SHCA:'State historic area',
+  SOTH:'Other state land', LCA:'Local conservation area', LP:'Local park', LREC:'Local recreation area', LOTH:'Other local land',
+  FOTH:'Other federal land', REC:'Recreation management area', ACEC:'Area of critical environmental concern', CONE:'Conservation easement',
+  MIT:'Mitigation land', PROC:'Proclamation boundary', SDA:'Special designation area', RNA:'Research natural area', WSA:'Wilderness study area' };
+const PUBLIC_MANG = /^(FED|STAT|LOC|DIST|JNT)$/;
+const titleCase = s => String(s).toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()).replace(/\b(Wma|Sna|Ama|Dnr|Us|Wia)\b/g, w => w.toUpperCase());
+const toGeo = g => { try{ return g ? L.esri.Util.arcgisToGeoJSON(g) : null; }catch(e){ return null; } };
+
+/* State DNR boundaries are whole properties; PAD-US is the fallback (national
+   and county forests, federal refuges, local parks). */
+function publicUnit(r, pad){
+  const wi = r.widnr && r.widnr.results.find(x => /DNR (Owned|Easement)|Leased Land/i.test(x.layerName) && x.geometry);
+  if(wi){ const a = wi.attributes;
+    return { src:wi, name:has(a.LOCAL_NAME_LABEL) ? a.LOCAL_NAME_LABEL : titleCase(a.PROP_NAME), acres:+a.ACRES, geo:toGeo(wi.geometry),
+      manager:'Wisconsin DNR', kind:wi.layerName.replace(/\s*\(property\)/i, ''), access:a.PUBLIC_ACCESS, uses:a.EASE_USE_CODE, link:a.RE_INFO_URL }; }
+  const mn = r.mndnr && r.mndnr.results.find(x => x.layerName === 'Dnr Management Units' && x.geometry);
+  if(mn){ const a = mn.attributes;
+    return { src:mn, name:a.UNIT_NAME, acres:+a.GIS_ACRES, geo:toGeo(mn.geometry), manager:'Minnesota DNR' + (has(a.ADMINISTRATOR) ? ' · ' + a.ADMINISTRATOR : ''),
+      kind:a.UNIT_TYPE, access:a.ACCESS_WO_TRESPASS }; }
+  const wia = r.mndnr && r.mndnr.results.find(x => /Walk In/i.test(x.layerName) && x.geometry);
+  if(wia){ const a = wia.attributes;
+    return { src:wia, name:a.map_title, acres:+a.acres, geo:toGeo(wia.geometry), manager:'Minnesota DNR Walk-In Access (private land)',
+      kind:'Walk-In Access', access:'Walk-in hunting by permit; see MN DNR rules. Uses: ' + (a.uses || '').trim() }; }
+  const p = pad.find(f => PUBLIC_MANG.test(f.properties.Mang_Type));
+  if(p){ const a = p.properties;
+    return { pad:p, name:a.Unit_Nm || MANAGERS[a.Mang_Name] || 'Public land', acres:null, padId:a.OBJECTID, padAcres:+a.SUM_GIS_Acres,
+      manager:MANAGERS[a.Mang_Name] || a.Mang_Name, kind:DESIG[a.Des_Tp] || a.Des_Tp, accessCode:a.Pub_Access }; }
+  return null;
+}
+/* PAD-US shapes can be huge (a national forest is 400 KB even simplified):
+   fetch only the one unit, coarser the bigger it is. */
+function padGeometry(id, acresHint){
+  const off = acresHint > 500000 ? 0.003 : acresHint > 50000 ? 0.001 : 0.0002;
+  return timed(new Promise(res => {
+    const q = L.esri.query({ url:SRC.padus }).featureIds([id]).returnGeometry(true).fields(['OBJECTID']);
+    q.params.maxAllowableOffset = off; q.params.geometryPrecision = 5;
+    q.run((err, fc) => res(err || !fc || !fc.features[0] ? { err:err || true } : { geo:fc.features[0] }));
+  }), {});
+}
+function unitBlock(u){
+  const a = u.accessCode ? ACCESS[u.accessCode] || ACCESS.UK : null;
+  let uses = '';
+  if(u.uses && /^[12]{4}$/.test(String(u.uses))) uses = '<div class="uses">' + ['Hiking','Fishing','Hunting','Trapping'].map((n,i) =>
+    `<span class="use ${String(u.uses)[i]==='1'?'y':'n'}">${n}</span>`).join('') + '</div>';
+  return '<div class="block unit"><h3>Public land</h3>' + (a ? `<span class="tag ${a[0]}">${esc(a[1])}</span>` : '') + uses + rows([
+      ['Name', u.name], ['Type', u.kind], ['Managed by', u.manager],
+      ['Total area', u.acres ? acres(u.acres) : (u.padId ? 'measuring…' : null)], ['Access', u.access]
+    ]).replace('<dd>measuring…</dd>', '<dd id="unitAcres">measuring…</dd>') +
+    '<div class="btnrow acts"><button class="btn" data-act="unit-zoom">Zoom to whole area</button>' +
+    (u.link ? `<a class="btn" href="${esc(u.link)}" target="_blank" rel="noopener">Property page</a>` : '') + '</div></div>';
+}
+const unitStyle = () => ({ color:css('--open'), weight:3, fillColor:css('--open'), fillOpacity:.14, dashArray:null });
+
 function render(ll, r){
+  const mySeq = clickSeq;
   const parcel = (r.wi && r.wi.features[0] && { st:'WI', f:r.wi.features[0] }) || (r.mn && r.mn.features[0] && { st:'MN', f:r.mn.features[0] });
   const pad = (r.padus && r.padus.features || []).filter(f=>f.properties.Pub_Access!=='UK').concat((r.padus && r.padus.features || []).filter(f=>f.properties.Pub_Access==='UK'));
   const access = pad[0] && ACCESS[pad[0].properties.Pub_Access];
   let html = '', title = 'No record here', tags = '';
 
+  const unit = publicUnit(r, pad);
+  let unitLayer = null;
+  const showUnit = g => { if(!g || mySeq !== clickSeq) return; unitLayer = L.geoJSON(g, { pane:'hiPane', interactive:false, style:unitStyle() }); hi.addLayer(unitLayer); unitLayer.bringToBack(); };
+  if(unit){
+    html += unitBlock(unit);
+    if(unit.geo) showUnit(unit.geo);
+    else if(unit.padId) padGeometry(unit.padId, unit.padAcres).then(res => {
+      if(mySeq !== clickSeq) return;
+      showUnit(res.geo);
+      const cell = document.getElementById('unitAcres');
+      if(cell) cell.textContent = res.geo ? acres(LF.geo.geojsonArea(res.geo) / LF.geo.M2_PER_AC) : '—';
+    });
+  }
+
   if(parcel){
-    hi.addLayer(L.geoJSON(parcel.f, { pane:'hiPane', style:{ color:css('--blaze'), weight:3, fillColor:css('--blaze'), fillOpacity:.12 } }));
+    hi.addLayer(L.geoJSON(parcel.f, { pane:'hiPane', style:{ color:css('--blaze'), weight:unit ? 2 : 3, fillColor:css('--blaze'), fillOpacity:unit ? 0 : .12 } }));
     const p = parcel.f.properties;
     if(parcel.st==='WI'){
       title = has(p.OWNERNME1) ? p.OWNERNME1 : 'Owner not listed';
-      html += '<div class="block"><h3>Parcel · Wisconsin</h3>' + rows([
+      html += `<div class="block"><h3>${unit ? 'Parcel at this spot' : 'Parcel'} · Wisconsin</h3>` + rows([
         ['Second owner', p.OWNERNME2], ['Mailing address', p.PSTLADRESS], ['Site address', p.SITEADRESS],
         ['Municipality', p.PLACENAME], ['County', p.CONAME],
         ['GIS acres', acres(p.GISACRES)], ['Deeded acres', acres(p.DEEDACRES)], ['Assessed acres', acres(p.ASSDACRES)],
@@ -141,7 +216,7 @@ function render(ll, r){
       title = has(p.owner_name) ? p.owner_name : 'Owner not listed';
       const site = [p.anumber, p.st_pre_dir, p.st_name, p.st_pos_typ, p.st_pos_dir].filter(has).join(' ');
       const plss = has(p.section) && has(p.township) && has(p.range) ? `Sec ${p.section}, T${p.township}N, R${p.range}${+p.range_dir===1?'E':'W'}` : null;
-      html += '<div class="block"><h3>Parcel · Minnesota</h3>' + rows([
+      html += `<div class="block"><h3>${unit ? 'Parcel at this spot' : 'Parcel'} · Minnesota</h3>` + rows([
         ['More owners', p.owner_more], ['Mailing address', [p.own_add_l1,p.own_add_l2,p.own_add_l3].filter(has).join(', ')],
         ['Site address', site], ['City / township', p.ctu_name], ['County', p.co_name],
         ['GIS acres', acres(p.acres_poly)], ['Deeded acres', acres(p.acres_deed)], ['Use class', p.useclass1],
@@ -168,18 +243,19 @@ function render(ll, r){
     }
   }
 
-  if(pad.length){
-    html += '<div class="block"><h3>Public land · PAD-US</h3>' + pad.slice(0,3).map(f=>{ const q=f.properties, a=ACCESS[q.Pub_Access]||ACCESS.UK;
+  const otherPad = pad.filter(f => f !== (unit && unit.pad) && !(unit && f.properties.Unit_Nm && f.properties.Unit_Nm === unit.name));
+  if(otherPad.length){
+    html += `<div class="block"><h3>${unit ? 'Also here' : 'Public land'} · PAD-US</h3>` + otherPad.slice(0,3).map(f=>{ const q=f.properties, a=ACCESS[q.Pub_Access]||ACCESS.UK;
       return `<div style="margin:6px 0"><span class="tag ${a[0]}">${esc(a[1])}</span>` + rows([
-        ['Unit', q.Unit_Nm], ['Manager', q.Mang_Name], ['Manager type', q.Mang_Type], ['Designation', q.Des_Tp], ['Acres', acres(q.DOCACRES)]]) + '</div>';
+        ['Unit', q.Unit_Nm], ['Manager', MANAGERS[q.Mang_Name] || q.Mang_Name], ['Designation', DESIG[q.Des_Tp] || q.Des_Tp]]) + '</div>';
     }).join('') + '</div>';
   }
 
   const dnr = []
-    .concat(r.widnr ? r.widnr.results.map(x=>['WI DNR land',x]) : [])
+    .concat(r.widnr ? r.widnr.results.filter(x => !(unit && x === unit.src)).map(x=>['WI DNR land',x]) : [])
     .concat(r.wiclosed ? r.wiclosed.results.map(x=>['WI closed / restricted',x]) : [])
     .concat(r.wimfl ? r.wimfl.results.map(x=>['WI MFL/FCL open forest',x]) : [])
-    .concat(r.mndnr ? r.mndnr.results.map(x=>['MN public land',x]) : []);
+    .concat(r.mndnr ? r.mndnr.results.filter(x => !(unit && x === unit.src)).map(x=>['MN public land',x]) : []);
   /* The same property often comes back from several layers of one service. */
   const seen = new Set(), uniq = dnr.filter(([label,x]) => {
     const key = label + JSON.stringify(Object.entries(x.attributes || {}).filter(([k]) => !SKIP.test(k.replace(/\s/g,'_'))));
@@ -191,15 +267,20 @@ function render(ll, r){
   const failed = Object.keys(NAMES).filter(k => r[k] && r[k].err);
   if(failed.length) html += `<p class="note">Did not load: ${failed.map(k => NAMES[k]).join(', ')}. Tap again to retry.</p>`;
 
-  if(parcel) tags += '<span class="tag priv">Parcel</span>';
+  if(unit){ title = unit.name; tags += '<span class="tag open">Public land</span>'; }
+  else if(parcel) tags += '<span class="tag priv">Parcel</span>';
   if(access) tags += `<span class="tag ${access[0]}">${esc(access[1])}</span>`;
-  if(!parcel && pad[0]) title = pad[0].properties.Unit_Nm || pad[0].properties.Mang_Name || 'Public land';
+  if(!parcel && !unit && pad[0]) title = pad[0].properties.Unit_Nm || pad[0].properties.Mang_Name || 'Public land';
   head.innerHTML = `<h2>${esc(title)}</h2><div>${tags}</div><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
   html = '<div class="btnrow acts"><button class="btn" data-act="save-wp">Save waypoint</button>' +
     '<button class="btn" data-act="measure">Measure from here</button></div>' + html;
   sheetHandler = act => {
-    if(act === 'save-wp') LF.items.newWaypoint([ll.lat, ll.lng], { name: parcel || !pad[0] ? '' : title });
+    if(act === 'save-wp') LF.items.newWaypoint([ll.lat, ll.lng], { name: unit ? unit.name : '' });
     if(act === 'measure') LF.draw.start('line', [ll.lat, ll.lng]);
+    if(act === 'unit-zoom'){
+      if(unitLayer) map.fitBounds(unitLayer.getBounds(), { padding:[30, 30] });
+      else LF.flash('Still loading the boundary…', 2000);
+    }
   };
   html += '<p class="note">For reference only, not a survey. Boundaries can be off by many feet. Signs and posted boundaries on the ground override this map, and special hunting rules may apply. Confirm with the county or DNR before you go.</p>';
   body.innerHTML = html;

@@ -61,7 +61,11 @@ function boundsOf(store, r){
 
 /* ---------- On the map ---------- */
 map.createPane('savedPane'); map.getPane('savedPane').style.zIndex = 440;
+/* Waypoints and labels sit above the highlight layer so they stay visible and tappable. */
+map.createPane('savedMarkers'); map.getPane('savedMarkers').style.zIndex = 460;
 const layer = L.layerGroup();
+/* Thin lines are hard to hit with a finger: accept taps within 12 px. */
+const touchy = L.canvas({ pane:'savedPane', tolerance:12 });
 let show = LF.prefs.get('showSaved', true);
 const showBox = document.getElementById('l-saved');
 showBox.checked = show;
@@ -70,7 +74,9 @@ if(show) layer.addTo(map);
 const labels = () => document.getElementById('map').classList.toggle('wp-labels', map.getZoom() >= 15);
 map.on('zoomend', labels); labels();
 
-function tap(store, r){ return e => { L.DomEvent.stopPropagation(e); if(!LF.mode) open(store, r.id); }; }
+/* A tap on a saved item opens it; while a drawing tool is active it adds a point there instead. */
+function tap(store, r){ return e => { L.DomEvent.stopPropagation(e);
+  if(LF.mode) LF.draw.add([e.latlng.lat, e.latlng.lng]); else open(store, r.id); }; }
 function wpIcon(w){
   const c = wpColor(w);
   return L.divIcon({ className:'wp-wrap', iconSize:[32, 32], iconAnchor:[16, 16],
@@ -81,22 +87,22 @@ async function redraw(){
   layer.clearLayers();
   const [wps, drs, trs] = await Promise.all([db.all('waypoints'), db.all('drawings'), db.all('tracks')]);
   drs.forEach(d => {
-    const c = d.color || '#e8590c', o = { pane:'savedPane', color:c, weight:3, opacity:.95 };
+    const c = d.color || '#e8590c', o = { pane:'savedPane', renderer:touchy, color:c, weight:3, opacity:.95 };
     if(d.kind === 'line') L.polyline(d.points, o).on('click', tap('drawings', d)).addTo(layer);
     else {
       const shape = d.kind === 'circle' ? L.circle(d.center, Object.assign({ radius:d.radius }, o, { fillOpacity:.15, interactive:false }))
                                         : L.polygon(d.points, Object.assign({}, o, { fillOpacity:.15, interactive:false }));
       shape.addTo(layer);
-      L.marker(where('drawings', d), { pane:'savedPane', icon:L.divIcon({ className:'area-label', iconSize:null,
+      L.marker(where('drawings', d), { pane:'savedMarkers', icon:L.divIcon({ className:'area-label', iconSize:null,
         html:`<span style="border-color:${c}">${esc(d.name)} · ${esc(stats('drawings', d)[0][1])}</span>` }) })
         .on('click', tap('drawings', d)).addTo(layer);
     }
   });
   trs.filter(t => !t.recording && t.points.length > 1).forEach(t => {
-    L.polyline(t.points.map(p => [p[0], p[1]]), { pane:'savedPane', color:t.color || '#d62828', weight:4, opacity:.9 })
+    L.polyline(t.points.map(p => [p[0], p[1]]), { pane:'savedPane', renderer:touchy, color:t.color || '#d62828', weight:4, opacity:.9 })
       .on('click', tap('tracks', t)).addTo(layer);
   });
-  wps.forEach(w => L.marker([w.lat, w.lng], { pane:'savedPane', icon:wpIcon(w), title:w.name, riseOnHover:true, zIndexOffset:1000 })
+  wps.forEach(w => L.marker([w.lat, w.lng], { pane:'savedMarkers', icon:wpIcon(w), title:w.name, riseOnHover:true, zIndexOffset:1000 })
     .on('click', tap('waypoints', w)).addTo(layer));
 }
 /* Many saves can land at once (an import); redraw once they settle. */

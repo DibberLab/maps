@@ -27,7 +27,8 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   const at = (fx, fy) => page.mouse.click(Math.round(vw.width * fx), Math.round(vw.height * fy));
   const tool = async t => { await page.click('#toolsBtn'); await page.click(`[data-tool=${t}]`); };
   const count = store => page.evaluate(s => LF.db.all(s).then(a => a.length), store);
-  const saveForm = async name => { await page.waitForSelector('#f-name'); if(name) await page.fill('#f-name', name); await page.click('[data-act=save]'); await page.waitForSelector('#sheetHead h2:not(:has-text("New"))'); };
+  const saveForm = async name => { await page.waitForSelector('#f-name'); if(name) await page.fill('#f-name', name); await page.click('[data-act=save]');
+    await page.waitForFunction(() => !/^(New|Edit) /.test(document.querySelector('#sheetHead h2').textContent)); };
 
   // 1. Waypoint: tap the map, pick an icon, save.
   await tool('waypoint');
@@ -47,6 +48,21 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(true, 'parcel sheet offers Save waypoint');
   await page.click('#closeSheet');
 
+  // 2b. After a lookup, tapping the waypoint itself opens it, and it can be edited.
+  //     (A highlight layer once covered saved items and turned this tap into a parcel lookup.)
+  const wpBox = await page.locator('.leaflet-marker-icon .wp').boundingBox();
+  await page.mouse.click(wpBox.x + wpBox.width / 2, wpBox.y + wpBox.height / 2);
+  await page.waitForSelector('#sheet:not([hidden]) [data-act=edit]', { timeout: 5000 }).catch(() => {});
+  check(/North stand/.test(await page.textContent('#sheetHead')), 'tapping a waypoint on the map opens it');
+  await page.click('#sheetBody [data-act=edit]');
+  await page.click('.iconpick[data-k=blind]');
+  await saveForm('North blind');
+  check(/North blind/.test(await page.textContent('#sheetHead')) && /Ground blind/.test(await page.textContent('#sheetHead')), 'edit renames it and changes the icon');
+  await page.waitForFunction(() => document.querySelector('.leaflet-marker-icon .wp-label').textContent === 'North blind', null, { timeout: 3000 }).catch(() => {});
+  check(await page.textContent('.leaflet-marker-icon .wp-label') === 'North blind', 'map label shows the new name');
+  await page.click('#sheetBody [data-act=edit]'); await page.click('.iconpick[data-k=stand]'); await saveForm('North stand');
+  await page.click('#closeSheet');
+
   // 3. Line, area and circle with live measurements.
   await tool('line');
   await at(0.2, 0.3); await at(0.5, 0.3); await at(0.5, 0.55);
@@ -54,6 +70,12 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(/(ft|mi)/.test(lineTxt), 'line shows its length: ' + lineTxt);
   check(!(await page.locator('#sheet:not([hidden])').count()), 'taps while drawing do not open parcel lookups');
   await page.click('#stripBtns [data-a=save]'); await saveForm();
+  await page.click('#closeSheet');
+  // Tap the saved line in the middle of its first leg (from 20% to 50% across, at 30% down).
+  await page.waitForTimeout(300);   // saved items redraw just after a save
+  await at(0.35, 0.3);
+  await page.waitForSelector('#sheet:not([hidden]) [data-act=edit]', { timeout: 5000 }).catch(() => {});
+  check(/Line/.test(await page.textContent('#sheetHead')), 'tapping a saved line opens it');
   await page.click('#closeSheet');
 
   await tool('area');

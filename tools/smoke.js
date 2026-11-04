@@ -75,6 +75,22 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(await page.evaluate(() => !!(window.LF && LF.map && document.querySelector('.brand'))), 'app opens with no network');
   await ctx.setOffline(false);
 
+  // 5b. A tap inside public land leads with the whole unit and outlines all of it.
+  for(const [name, lat, lng, want] of [['WI DNR', 45.86, -92.62, /Crex Meadows Wildlife Area/], ['PAD-US', 46.2, -91.1, /Chequamegon National Forest/]]){
+    await page.goto(BASE + `#map=15/${lat}/${lng}&pin=${lat},${lng}&layers=parcels,padus,widnr,mndnr`);
+    await page.waitForFunction(() => !/Looking up/.test(document.querySelector('#sheetHead').textContent), null, { timeout: 30000 });
+    const h = await page.textContent('#sheetHead h2'), b = await page.textContent('#sheetBody');
+    check(want.test(h) && /Public land/.test(await page.textContent('#sheetHead')), `${name} public land is the title: ${h}`);
+    await page.waitForFunction(() => !/measuring/.test(document.querySelector('#sheetBody').textContent), null, { timeout: 20000 }).catch(() => {});
+    const area = ((await page.textContent('#sheetBody')).match(/Total area\s*([\d,.]+ ac)/) || [])[1];
+    check(!!area, `${name} shows the whole area's acres: ${area}`);
+    await page.click('[data-act=unit-zoom]');
+    await page.waitForTimeout(800);
+    check(await page.evaluate(() => LF.map.getZoom()) < 15, `${name}: Zoom to whole area zooms out to the boundary`);
+    if(name === 'WI DNR'){ await page.waitForTimeout(2000); await page.screenshot({ path: path.join(OUT, 'smoke-public.png') }); }
+  }
+  await page.click('#closeSheet');
+
   // 6. Desktop layout and dark mode still render.
   const desk = await browser.newPage({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
   desk.on('pageerror', e => errors.push('desktop pageerror: ' + e.message));

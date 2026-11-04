@@ -85,5 +85,5 @@ btns.addEventListener('click', e => {
 map.on('click', e => { if(kind) add([e.latlng.lat, e.latlng.lng]); });
 document.addEventListener('keydown', e => { if(e.key === 'Escape' && kind) stop(); });
 
-LF.draw = { start, stop, active:() => kind };
+LF.draw = { start, stop, active:() => kind, add:p => { if(kind) add(p); } };
 })(window.LF);

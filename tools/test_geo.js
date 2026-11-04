@@ -15,6 +15,11 @@ near(g.bearing([45, -92], [46, -92]), 0, 0.01, 'bearing due north');
 near(g.bearing([45, -92], [45, -91]), 89.65, 0.05, 'bearing nearly due east');
 near(g.area(g.circlePts([45, -92], 100, 256)), Math.PI * 100 * 100, 30, '100 m circle area in m²');
 near(g.gain([300, 301, 299, 305, 310, 306, 304, 312]), 16, 0.001, 'climb ignores GPS jitter under 4 m (300→310, then 306→312)');
+// GeoJSON is [lng, lat]: a 40-acre square with a 10-acre square hole.
+const sq = (c, side) => { const a0 = c, b0 = g.dest(a0, 90, side), c0 = g.dest(b0, 0, side), d0 = g.dest(a0, 0, side); return [a0, b0, c0, d0, a0].map(p => [p[1], p[0]]); };
+const outer = sq([45.5, -92.5], 402.336), hole = sq(g.dest(g.dest([45.5, -92.5], 90, 100), 0, 100), 201.168);
+near(g.geojsonArea({ type:'Polygon', coordinates:[outer, hole] }) / g.M2_PER_AC, 30, 0.05, 'GeoJSON polygon with a hole, in acres');
+near(g.geojsonArea({ type:'MultiPolygon', coordinates:[[outer], [sq([46, -92], 402.336)]] }) / g.M2_PER_AC, 80, 0.1, 'GeoJSON multipolygon, in acres');
 eq(g.fmtDist(100), '328 ft', 'short distance in feet');
 eq(g.fmtDist(1609.344), '1.00 mi', 'one mile');
 eq(g.fmtArea(40 * g.M2_PER_AC), '40.00 ac', 'forty acres');

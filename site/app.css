@@ -157,3 +157,11 @@ form.edit label.btn{display:inline-flex;color:var(--ink);font-size:15px;margin-t
 .row>span:last-child{display:flex;flex-direction:column;min-width:0}
 .row b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .swatch-sm{width:22px;height:22px;border-radius:5px;flex:none;border:1px solid rgba(0,0,0,.2);margin:0 2px}
+
+/* Map layers drawn on canvas (parcel lines, public land, highlights, GPS dot) never take taps;
+   otherwise their full-map canvas sits over saved waypoints and lines and swallows the tap. */
+/* Leaflet names a pane created as 'parcelPane' .leaflet-parcel-pane. */
+.leaflet-public-pane canvas,.leaflet-parcel-pane canvas,.leaflet-hi-pane canvas{pointer-events:none}
+
+a.btn{text-decoration:none;color:var(--ink)}
+.unit .uses{margin:6px 0 2px}

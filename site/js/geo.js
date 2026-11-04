@@ -41,6 +41,17 @@ function dest(a, brgDeg, m){  // point m meters from a along bearing
 function circlePts(c, r, n){ n = n || 64; const o = []; for(let i=0;i<n;i++) o.push(dest(c, 360*i/n, r)); return o; }
 function centroid(pts){ let la = 0, ln = 0; pts.forEach(p => { la += p[0]; ln += p[1]; }); return [la/pts.length, ln/pts.length]; }
 
+/* Area of a GeoJSON Polygon or MultiPolygon in m², holes subtracted. */
+function geojsonArea(g){
+  if(!g) return 0;
+  if(g.type === 'Feature') return geojsonArea(g.geometry);
+  if(g.type === 'FeatureCollection') return g.features.reduce((s, f) => s + geojsonArea(f), 0);
+  const poly = rings => rings.reduce((s, r, i) => s + (i ? -1 : 1) * area(r.map(c => [c[1], c[0]])), 0);
+  if(g.type === 'Polygon') return Math.max(0, poly(g.coordinates));
+  if(g.type === 'MultiPolygon') return g.coordinates.reduce((s, p) => s + Math.max(0, poly(p)), 0);
+  return 0;
+}
+
 /* Climb from noisy GPS altitudes: count a rise only once it beats `step` meters. */
 function gain(alts, step){
   step = step || 4;
@@ -161,7 +172,7 @@ function parseFile(text, Parser){
   return out;
 }
 
-const api = { dist, length, area, bearing, dest, circlePts, centroid, gain, shapePts,
+const api = { dist, length, area, geojsonArea, bearing, dest, circlePts, centroid, gain, shapePts,
   fmtDist, fmtArea, fmtTime, fmtPace, fmtFt, fmtBearing, fmtLL, toGPX, toKML, parseFile, M2_PER_AC };
 if(typeof module !== 'undefined' && module.exports) module.exports = api;
 else { root.LF = root.LF || {}; root.LF.geo = api; }

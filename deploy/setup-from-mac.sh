@@ -19,7 +19,7 @@ echo "== 1. connection"
 d 'hostname && uptime'
 
 echo "== 2. checkout at /var/www/maps"
-d "test -d /var/www/maps/.git || git clone git@github.com:$R.git /var/www/maps"
+d "test -d /var/www/maps/.git || git clone https://github.com/$R.git /var/www/maps"
 d 'cd /var/www/maps && git pull --ff-only origin main && git log -1 --oneline'
 
 echo "== 3. origin certificate for $NAME"

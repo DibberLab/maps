@@ -9,3 +9,4 @@ For reference only, not a survey. Signs and posted boundaries on the ground over
 - Run locally: `cd site && python3 -m http.server 8765`
 - Deploy: push to `main` (see `deploy/AUTODEPLOY.md`)
 - Notes for contributors: `CLAUDE.md`
+- Planned features: `ROADMAP.md`

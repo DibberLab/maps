@@ -54,7 +54,19 @@ form.search button{border:0;background:transparent;padding:0 12px;cursor:pointer
 .sheet{position:fixed;z-index:1002;left:0;right:0;bottom:0;max-height:58%;overflow:auto;background:var(--panel);
   border-top-left-radius:12px;border-top-right-radius:12px;box-shadow:var(--shadow);
   padding:8px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
-.sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:2px auto 6px}
+.sheet .grab{display:block;width:100%;height:22px;margin:-8px 0 0;padding:8px 0;border:0;background:transparent;cursor:grab;touch-action:none}
+.sheet .grab span{display:block;width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto}
+/* Tucked down (phones): only the title strip shows; drag up or tap it to bring the panel back. */
+.sheet.tucked{max-height:none;height:calc(76px + env(safe-area-inset-bottom,0px));overflow:hidden}
+.sheet.tucked header{cursor:pointer}
+.sheet.tucked #sheetHead h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:20px}
+.sheet.tucked #sheetHead>:not(h2){display:none}
+.sheet.tucked #sheetBody,.sheet.tucked .sheetbtns #shareBtn{display:none}
+.sheet.dragging{transition:none!important}
+@media (max-width:819px){
+  body:has(.sheet.tucked:not([hidden])) .fab{transform:translateY(calc(-60px - env(safe-area-inset-bottom,0px)))}
+  body:has(.sheet.tucked:not([hidden])) .leaflet-bottom{transform:translateY(-76px)}
+}
 .sheet header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .sheet h2{font:700 24px/1.1 var(--display);letter-spacing:.02em;margin:4px 0 2px;text-wrap:balance}
 .close{border:0;background:var(--panel-2);border-radius:6px;width:36px;height:36px;cursor:pointer;flex:none;font-size:18px}
@@ -81,6 +93,8 @@ a{color:var(--blaze)}
 @media (min-width:820px){
   .sheet{left:max(12px,env(safe-area-inset-left,0px));right:auto;top:calc(70px + env(safe-area-inset-top,0px));bottom:24px;width:390px;max-height:none;border-radius:8px}
   .sheet .grab{display:none}
+  .sheet.tucked{height:auto;overflow:auto}
+  .sheet.tucked #sheetHead>:not(h2),.sheet.tucked #sheetBody,.sheet.tucked .sheetbtns #shareBtn{display:revert}
   .leaflet-control-zoom{display:block}
 }
 @media (prefers-reduced-motion:no-preference){.sheet,.layers{animation:rise .18s ease-out}@keyframes rise{from{transform:translateY(12px);opacity:.6}}}
@@ -334,3 +348,4 @@ button.brand .burger{margin-right:12px}
 .mf .switch{transform:scale(.85);margin-right:0}
 .backbtn{display:inline-flex;align-items:center;border:0;background:transparent;color:var(--blaze);font:600 15px/1 inherit;padding:6px 8px 6px 0;margin:0 0 2px;cursor:pointer;min-height:36px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .backbtn:hover{text-decoration:underline}
+.recsw{display:inline-block;width:18px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}

@@ -52,6 +52,61 @@ function identify(url, latlng, layers, geom){
 const both = (a, b) => Promise.all([a, b]).then(([x, y]) => ({ err: x.err && y.err, results: x.results.concat(y.results) }));
 const inWI = ll => ll.lat>42.4 && ll.lat<47.4 && ll.lng>-92.95 && ll.lng<-86.2;
 const inMN = ll => ll.lat>43.4 && ll.lat<49.5 && ll.lng>-97.3 && ll.lng<-89.4;
+/* ---------- MN DNR trails, forest roads and water accesses near the tap ----------
+   Only the layers that are switched on are asked, within about 14 screen pixels (more for access dots). */
+const REC_LAYERS = { mntrails:['mnStateTrails', 'mnHunterTrails'], mnmotor:['mnOhv', 'mnSnowmobile'], mnroads:['mnForestRoads'], mnaccess:['mnAccess'] };
+const REC_FIELDS = {
+  mnStateTrails:['trail_name','alt_name','use_hike','use_hiking','use_horse','use_bike','use_mntbik','use_inline','use_wntrhi','use_snosho','use_atvcl1','use_atvcl2','use_ohm','use_orv','use_wcftm','use_wcftnm','surfacetyp','width'],
+  mnHunterTrails:['trail_name','unit_name','area_name','lmiles','phone','comments'],
+  mnOhv:['trail_name','segment_name','surface_type','trail_width','atv_class_1','atv_class_2','off_highway_motorcycle','off_road_vehicle','road_class','miles','web_site'],
+  mnSnowmobile:['trail_name','trail_num','owner_type','maint_by','public_poc','public_pho','pocwebsite','miles'],
+  mnForestRoads:['road_name','road_num','road_class','forest_area','miles'],
+  mnAccess:['access_name','lake_name','launch_type','ramp_surface','number_of_ramps','number_of_docks','trailer_parking_spaces_non_ada','car_parking_spaces_non_ada','number_of_toilets','administrator','directions','alerts','unique_swas_id']
+};
+function recLookup(ll){
+  const mpp = 156543.03 * Math.cos(ll.lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+  const keys = Object.entries(REC_LAYERS).filter(([k]) => on[k] && map.getZoom() >= 10).flatMap(([, v]) => v);
+  if(!keys.length) return null;
+  return Promise.all(keys.map(key => query(SRC[key], ll, REC_FIELDS[key], { nearby:Math.min(400, Math.max(12, mpp * (key === 'mnAccess' ? 22 : 14))) })
+    .then(q => ({ err:q.err, results:q.features.slice(0, 3).map(f => ({ key, p:f.properties })) }))))
+    .then(all => ({ err:all.every(a => a.err), results:[].concat(...all.map(a => a.results)) }));
+}
+const yes = v => v === 1 || v === '1' || /^(x|y|yes)$/i.test(String(v || '').trim());
+function recBlock(x){
+  const p = x.p, R = LF.REC[x.key], sw = `<span class="recsw" style="border-color:${R.color}${R.dash ? ';border-style:dashed' : ''}"></span>`;
+  let name = '', rowsOut = [], uses = [], link = '';
+  if(x.key === 'mnStateTrails'){
+    name = p.trail_name; rowsOut = [['Also called', p.alt_name], ['Surface', p.surfacetyp], ['Width', p.width]];
+    uses = [['Hiking', p.use_hike || p.use_hiking], ['Biking', p.use_bike], ['Mountain bike', p.use_mntbik], ['Horses', p.use_horse], ['Skating', p.use_inline],
+      ['Ski', p.use_wntrhi], ['Snowshoe', p.use_snosho], ['Snowmobile', p.use_wcftm || p.use_wcftnm], ['ATV', p.use_atvcl1 || p.use_atvcl2], ['Off-road motorcycle', p.use_ohm], ['Off-road vehicle', p.use_orv]];
+  } else if(x.key === 'mnHunterTrails'){
+    name = p.trail_name; rowsOut = [['In', p.area_name || p.unit_name], ['Length', p.lmiles ? (+p.lmiles).toFixed(1) + ' mi' : null], ['Phone', p.phone], ['Notes', p.comments]];
+    link = '<a href="https://www.dnr.state.mn.us/hunting/hwt/index.html" target="_blank" rel="noopener">Hunter walking trails (DNR)</a>';
+  } else if(x.key === 'mnOhv'){
+    name = p.trail_name; rowsOut = [['Segment', p.segment_name], ['Surface', p.surface_type], ['Width', p.trail_width], ['Road class', p.road_class]];
+    uses = [['ATV class 1', p.atv_class_1], ['ATV class 2 (side-by-side)', p.atv_class_2], ['Off-highway motorcycle', p.off_highway_motorcycle], ['Off-road vehicle', p.off_road_vehicle]];
+    if(/^https?:/i.test(p.web_site || '')) link = `<a href="${esc(p.web_site)}" target="_blank" rel="noopener">Trail page (DNR)</a>`;
+  } else if(x.key === 'mnSnowmobile'){
+    name = p.trail_name + (p.trail_num ? ' (#' + p.trail_num + ')' : ''); rowsOut = [['Maintained by', p.maint_by], ['Contact', [p.public_poc, p.public_pho].filter(Boolean).join(', ')]];
+    link = /^https?:/i.test(p.pocwebsite || '') ? `<a href="${esc(p.pocwebsite)}" target="_blank" rel="noopener">Club website</a>`
+      : '<a href="https://www.dnr.state.mn.us/snowmobiling/index.html" target="_blank" rel="noopener">Snowmobiling (DNR): trail conditions</a>';
+  } else if(x.key === 'mnForestRoads'){
+    const min = /minimum/i.test(p.road_class || '');
+    const numOnly = !p.road_name || p.road_name === p.road_num;
+    name = numOnly ? 'Forest Road ' + (p.road_num || '') : p.road_name;
+    rowsOut = [['Road number', numOnly ? null : p.road_num], ['Class', p.road_class], ['State forest area', p.forest_area]];
+    link = `<span class="small">${min ? 'Minimum maintenance: not maintained for regular cars; may be rough, wet or closed seasonally.' : 'Maintained state forest road.'} ATV rules depend on the forest's classification.</span>`;
+  } else if(x.key === 'mnAccess'){
+    name = p.access_name || 'Water access'; rowsOut = [['Water', p.lake_name], ['Launch', p.launch_type], ['Ramp', /unknown/i.test(p.ramp_surface || '') ? null : [p.number_of_ramps > 0 ? p.number_of_ramps + '×' : '', p.ramp_surface].filter(Boolean).join(' ')],
+      ['Docks', p.number_of_docks], ['Trailer parking', p.trailer_parking_spaces_non_ada], ['Car parking', p.car_parking_spaces_non_ada], ['Toilets', p.number_of_toilets],
+      ['Run by', p.administrator], ['Directions', p.directions], ['Alert', p.alerts]];
+    link = '<a href="https://www.dnr.state.mn.us/water_access/index.html" target="_blank" rel="noopener">Water access (DNR)</a>';
+  }
+  const useHtml = uses.length && uses.some(u => yes(u[1])) ? '<div class="uses">' + uses.filter(u => yes(u[1])).map(u => `<span class="use y">${esc(u[0])}</span>`).join('') + '</div>' : '';
+  return `<div style="margin:8px 0"><div class="small">${sw}${esc(R.label)}</div><div style="font-weight:600">${esc(name || R.label)}</div>${useHtml}${rows(rowsOut)}` +
+    (link ? `<div style="margin-top:4px">${link}</div>` : '') + '</div>';
+}
+
 /* Shared with offline.js, which saves the same records for an area. */
 LF.lookup = { WI_FIELDS, MN_FIELDS, MFL_FIELDS, mflResults, WI_BOX:[[42.4,-92.95],[47.4,-86.2]], MN_BOX:[[43.4,-97.3],[49.5,-89.4]] };
 
@@ -64,11 +119,47 @@ function wiClass(v){ if(!has(v)) return null;
 const sheet = document.getElementById('sheet'), head = document.getElementById('sheetHead'), body = document.getElementById('sheetBody');
 let sheetHandler = null, sheetOnClose = null;
 function closeSheet(){
-  sheet.hidden = true; hi.clearLayers(); pin.remove(); LF.select.clear(); clickSeq++;
+  sheet.hidden = true; tuck(false); hi.clearLayers(); pin.remove(); LF.select.clear(); clickSeq++;
   const f = sheetOnClose; sheetHandler = sheetOnClose = null; if(f) f();
   LF.pinLL = null; LF.emit('pin');
 }
 document.getElementById('closeSheet').addEventListener('click', closeSheet);
+
+/* Phones: drag the panel down by its grab bar or title to tuck it out of the way (it stays open, title showing);
+   drag it up or tap the strip to bring it back. Opening something new shows the full panel again. */
+const grab = document.getElementById('sheetGrab');
+function tuck(on){
+  sheet.classList.toggle('tucked', on); grab.setAttribute('aria-expanded', String(!on));
+  grab.setAttribute('aria-label', on ? 'Show the whole panel' : 'Tuck the panel down');
+  if(!on) sheet.scrollTop = 0;
+}
+LF.tuckSheet = tuck;
+(function(){
+  let y0 = null, dy = 0, moved = false, onGrab = false;
+  const startOK = e => window.innerWidth < 820 && (e.target.closest('#sheetGrab') || (e.target.closest('header') && !e.target.closest('button,a,input')));
+  sheet.addEventListener('pointerdown', e => {
+    if(!startOK(e) || (!sheet.classList.contains('tucked') && sheet.scrollTop > 0 && !e.target.closest('#sheetGrab'))) return;
+    y0 = e.clientY; dy = 0; moved = false; onGrab = !!e.target.closest('#sheetGrab'); sheet.classList.add('dragging');
+    try{ sheet.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  sheet.addEventListener('pointermove', e => {
+    if(y0 == null) return;
+    dy = e.clientY - y0; if(Math.abs(dy) > 6) moved = true;
+    const tucked = sheet.classList.contains('tucked');
+    sheet.style.transform = `translateY(${tucked ? Math.min(0, dy) * .3 : Math.max(0, dy)}px)`;
+  });
+  const end = e => {
+    if(y0 == null) return;
+    const tucked = sheet.classList.contains('tucked');
+    sheet.classList.remove('dragging'); sheet.style.transform = ''; y0 = null;
+    if(!moved){ if(tucked) tuck(false); else if(onGrab) tuck(true); return; }
+    if(!tucked && dy > 50) tuck(true);
+    else if(tucked && dy < -20) tuck(false);
+  };
+  sheet.addEventListener('pointerup', end);
+  grab.addEventListener('click', e => e.preventDefault()); sheet.addEventListener('pointercancel', () => { y0 = null; sheet.classList.remove('dragging'); sheet.style.transform = ''; });
+  grab.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); tuck(!sheet.classList.contains('tucked')); } });
+})();
 LF.closeSheet = closeSheet;
 /* Buttons in the sheet carry data-act="…"; whoever filled the sheet handles them. */
 body.addEventListener('click', e => { const el = e.target.closest('[data-act]');
@@ -84,6 +175,7 @@ LF.showSheet = function(headHTML, bodyHTML, opts){
   const prev = sheetOnClose; sheetOnClose = null; if(prev) prev();
   clickSeq++; hi.clearLayers(); pin.remove(); LF.select.clear();
   // opts.back {label, go}: a "‹ Back" link above the title, to the panel this one was opened from.
+  tuck(false);
   head.innerHTML = (opts.back ? `<button class="backbtn" id="sheetBack">‹ ${esc(opts.back.label || 'Back')}</button>` : '') + headHTML; body.innerHTML = bodyHTML;
   if(opts.back) document.getElementById('sheetBack').addEventListener('click', () => opts.back.go());
   sheetHandler = opts.onAct || null; sheetOnClose = opts.onClose || null;
@@ -107,7 +199,7 @@ async function inspect(ll, opts){
   hi.clearLayers(); LF.select.clear(); LF.select.point([ll.lat, ll.lng]);
   LF.pinLL = ll; LF.emit('pin');
   document.getElementById('shareBtn').hidden = false;
-  sheet.hidden = false;
+  sheet.hidden = false; tuck(false);
   head.innerHTML = `<h2>Looking up…</h2><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
   body.innerHTML = '<div class="loading">Checking parcel and public land records</div>';
   if(!(opts && opts.live) && await inspectSaved(ll, seq)) return;
@@ -121,7 +213,8 @@ async function inspect(ll, opts){
     widnr: inWI(ll) ? identify(SRC.wiDnr, ll, 'visible', true) : null,
     wiclosed: inWI(ll) ? identify(SRC.wiClosed, ll) : null,
     wimfl: inWI(ll) && on.wimfl ? query(SRC.wiMfl, ll, MFL_FIELDS, { nearby:300, where:'AC_OP_PLS > 0' }).then(mflResults) : null,
-    mndnr: inMN(ll) ? both(identify(SRC.mnDnr, ll, 'visible:' + LF.MN_DNR_LAYER, true), identify(SRC.mnWia, ll, 'visible', true)) : null
+    mndnr: inMN(ll) ? both(identify(SRC.mnDnr, ll, 'visible:' + LF.MN_DNR_LAYER, true), identify(SRC.mnWia, ll, 'visible', true)) : null,
+    mnrec: inMN(ll) ? recLookup(ll) : null
   };
   const r = {}; await Promise.all(Object.entries(jobs).map(async([k,p])=>{ r[k] = p ? await p : null; }));
   if(seq !== clickSeq) return;
@@ -280,10 +373,18 @@ function render(ll, r, savedArea){
   const seen = new Set(), uniq = dnr.filter(([label,x]) => {
     const key = label + JSON.stringify(Object.entries(x.attributes || {}).filter(([k]) => !SKIP.test(k.replace(/\s/g,'_'))));
     if(seen.has(key)) return false; seen.add(key); return true; });
+  let recHtml = '';   // shown first: a tap on a trail or access dot is about that
+  if(r.mnrec && r.mnrec.results.length){
+    // Access sites first (a tap on a dot), then trails and roads; one entry per name.
+    const seenRec = new Set(), recs = r.mnrec.results.slice().sort((a, b) => (b.key === 'mnAccess') - (a.key === 'mnAccess'))
+      .filter(x => { const k = x.key + (x.p.trail_name || x.p.road_name || x.p.road_num || x.p.access_name || x.p.unique_swas_id || Math.random());
+        if(seenRec.has(k)) return false; seenRec.add(k); return true; });
+    recHtml = '<div class="block"><h3>Trails, roads &amp; water access</h3>' + recs.slice(0, 5).map(recBlock).join('') + '</div>';
+  }
   if(uniq.length){
     html += '<div class="block"><h3>State agency records</h3>' + uniq.slice(0,6).map(([label,x])=>dnrBlock(label,x)).join('') + '</div>';
   }
-  const NAMES = { padus:'PAD-US public land', widnr:'WI DNR lands', wiclosed:'WI closed areas', wimfl:'WI MFL/FCL', mndnr:'MN DNR lands', mncov:'MN county coverage' };
+  const NAMES = { padus:'PAD-US public land', widnr:'WI DNR lands', wiclosed:'WI closed areas', wimfl:'WI MFL/FCL', mndnr:'MN DNR lands', mncov:'MN county coverage', mnrec:'MN trails & accesses' };
   const failed = Object.keys(NAMES).filter(k => r[k] && r[k].err);
   if(failed.length) html += `<p class="note">Did not load: ${failed.map(k => NAMES[k]).join(', ')}. Tap again to retry.</p>`;
 
@@ -294,7 +395,7 @@ function render(ll, r, savedArea){
   head.innerHTML = `<h2>${esc(title)}</h2><div>${tags}</div><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
   if(savedArea) html = `<p class="note saved-note">From your offline copy of “${esc(savedArea.name)}”, saved ${new Date(savedArea.updated || savedArea.created).toLocaleDateString('en-US')}.` +
     ' <button class="linkbtn" data-act="live">Check live data</button></p>' + html;
-  html = LF.shadeSwitch() + html;
+  html = LF.shadeSwitch() + recHtml + html;
   html = '<div class="btnrow acts"><button class="btn" data-act="save-wp">Save waypoint</button>' +
     '<button class="btn" data-act="measure">Measure from here</button><button class="btn" data-act="route">Directions</button></div>' + html;
   sheetHandler = act => {

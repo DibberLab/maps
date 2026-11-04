@@ -108,6 +108,25 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.screenshot({ path: path.join(OUT, 'smoke-mn-closeup.png') });
   check(await page.isVisible('#l-terrain') || await page.locator('#l-terrain').count() === 1, 'Terrain shading switch is in the layers panel');
 
+  // 5d. MN DNR trails, forest roads and accesses: switched on, a tap on an access and road shows their details first.
+  await page.goto('about:blank');
+  await page.goto(BASE + '#map=16/47.58774/-91.07932&pin=47.58774,-91.07932&base=img&layers=mntrails,mnmotor,mnroads,mnaccess');
+  await page.waitForFunction(() => !/Looking up/.test(document.querySelector('#sheetHead').textContent), null, { timeout: 40000 }).catch(() => {});
+  const rec = await page.evaluate(() => { const b = document.querySelector('#sheetBody .block'); return b ? b.textContent : ''; });
+  check(/Trails, roads/.test(rec) && /Thunderbird/.test(rec) && /Carry-In/.test(rec), 'tap on a MN water access shows it first: ' + rec.slice(0, 80));
+  check(/Forest Road|Thunder Road/.test(rec), 'and the state forest road beside it');
+  await page.screenshot({ path: path.join(OUT, 'smoke-mn-access.png') });
+
+  // 5e. Phones: drag the panel down by its grab bar to tuck it (still open, title showing); a tap brings it back.
+  const g = await page.locator('#sheetGrab').boundingBox();
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2); await page.mouse.down();
+  await page.mouse.move(g.x + g.width / 2, g.y + 60, { steps: 5 }); await page.mouse.move(g.x + g.width / 2, g.y + 160, { steps: 5 }); await page.mouse.up();
+  const tucked = await page.evaluate(() => ({ t:document.getElementById('sheet').classList.contains('tucked'), h:document.getElementById('sheet').getBoundingClientRect().height, open:!document.getElementById('sheet').hidden }));
+  check(tucked.t && tucked.open && tucked.h < 130, 'swiping the panel down tucks it out of the way without closing: ' + Math.round(tucked.h) + ' px');
+  await page.screenshot({ path: path.join(OUT, 'smoke-tucked.png') });
+  await page.click('#sheetGrab');
+  check(await page.evaluate(() => !document.getElementById('sheet').classList.contains('tucked')), 'tapping the strip brings the panel back');
+
   // 6. Desktop layout and dark mode still render.
   const desk = await browser.newPage({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
   desk.on('pageerror', e => errors.push('desktop pageerror: ' + e.message));
@@ -116,7 +135,8 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await desk.waitForTimeout(2500);
   await desk.screenshot({ path: path.join(OUT, 'smoke-desktop.png') });
 
-  const real = errors.filter(e => !/net::ERR_INTERNET_DISCONNECTED|Failed to fetch|ERR_FAILED/.test(e));
+  // USGS's label servers (city and lake names) often refuse requests for a while; labels.js just skips them.
+  const real = errors.filter(e => !/net::ERR_INTERNET_DISCONNECTED|Failed to fetch|ERR_FAILED/.test(e) && !/(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));
   await browser.close();
   console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

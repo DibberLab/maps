@@ -15,7 +15,23 @@ const SRC = LF.SRC = {
   wiMfl:     'https://services5.arcgis.com/Ul9AyFFeFTjf08DW/arcgis/rest/services/X13661_FR_GIS_TAXLAW_PT_SV/FeatureServer/0',
   /* MN DNR management units (WMAs, state forests, SNAs, AMAs): layer 3 of this service. */
   mnDnr:     'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/bdry_dnr_managed_areas/MapServer',
-  mnWia:     'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/bdry_dnr_walk_in_access_sites/MapServer'
+  mnWia:     'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/bdry_dnr_walk_in_access_sites/MapServer',
+  /* MN DNR trails, forest roads and water accesses (layer 0 of each). */
+  mnStateTrails: 'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/trans_state_trails_minnesota/MapServer/0',
+  mnHunterTrails:'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/trans_hunter_walking_trails/MapServer/0',
+  mnOhv:         'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/trans_ohv_trails_mn/MapServer/0',
+  mnSnowmobile:  'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/trans_snowmobile_trails_mn/MapServer/0',
+  mnForestRoads: 'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/trans_state_forest_roads/MapServer/0',
+  mnAccess:      'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/struc_water_access_sites/MapServer/0'
+};
+/* How each MN trail / road / access layer is drawn; identify.js shares these for tap details. */
+const REC = LF.REC = {
+  mnStateTrails: { color:'#2e7d32', dash:null, label:'State trail' },
+  mnHunterTrails:{ color:'#e8590c', dash:'7 5', label:'Hunter walking trail' },
+  mnOhv:         { color:'#c62828', dash:'9 5', label:'ATV / OHV trail' },
+  mnSnowmobile:  { color:'#1565c0', dash:'2 6', label:'Snowmobile trail' },
+  mnForestRoads: { color:'#795548', dash:null, label:'State forest road' },
+  mnAccess:      { color:'#0277bd', label:'Water access' }
 };
 LF.MN_DNR_LAYER = 3;
 const PARCEL_ZOOM = LF.PARCEL_ZOOM = 15;
@@ -190,8 +206,32 @@ const terrain = new ExportTiles('https://elevation.nationalmap.gov/arcgis/rest/s
   '&renderingRule=' + encodeURIComponent('{"rasterFunction":"Hillshade Multidirectional"}'),
   { tileSize:512, zoomOffset:-1, minZoom:10, maxZoom:20, maxNativeZoom:18, keepBuffer:1, crossOrigin:true, pane:'terrainPane', opacity:1, className:'hd-tile',
     attribution:'Terrain: USGS 3DEP lidar' });
+/* MN DNR trails, forest roads and water accesses: drawn as lines and dots from zoom 10, cased in white so they
+   read on aerial and topo alike. Taps are answered by identify.js (nearby lookup), so these aren't interactive. */
+map.createPane('recCasePane'); map.getPane('recCasePane').style.zIndex = 429; map.getPane('recCasePane').style.pointerEvents = 'none';
+map.createPane('recPane'); map.getPane('recPane').style.zIndex = 430; map.getPane('recPane').style.pointerEvents = 'none';
+const recWidth = () => map.getZoom() >= 14 ? 3.2 : 2.2;
+/* One request per layer: the white casing copies each feature the coloured layer loads (into a pane just below it). */
+function cased(key, fields, style){
+  const fl = L.esri.featureLayer({ url:SRC[key], pane:'recPane', minZoom:10, interactive:false, simplifyFactor:0.6, precision:5, fields, style });
+  const cas = L.layerGroup(), byId = new Map();
+  const caseStyle = () => ({ color:'#fff', weight:recWidth() + 3, opacity:map.getZoom() >= 10 ? .75 : 0, lineCap:'round', lineJoin:'round' });
+  fl.on('createfeature addfeature', e => { if(byId.has(e.feature.id)) return;
+    const c = L.geoJSON(e.feature, { pane:'recCasePane', interactive:false, style:caseStyle }); byId.set(e.feature.id, c); cas.addLayer(c); });
+  fl.on('removefeature', e => { const c = byId.get(e.feature.id); if(c){ cas.removeLayer(c); byId.delete(e.feature.id); } });
+  cas.restyle = () => cas.eachLayer(g => g.setStyle(caseStyle()));
+  return [cas, fl];
+}
+const recLine = key => () => ({ color:REC[key].color, weight:recWidth(), dashArray:REC[key].dash, opacity:.95, lineCap:'round' });
+const roadStyle = f => ({ color:REC.mnForestRoads.color, weight:recWidth(), dashArray:/minimum/i.test(f.properties.road_class || '') ? '10 6' : null, opacity:.95 });
 const layers = LF.layers = {
   terrain,
+  mntrails: L.layerGroup([...cased('mnStateTrails', ['objectid'], recLine('mnStateTrails')), ...cased('mnHunterTrails', ['objectid'], recLine('mnHunterTrails'))]),
+  mnmotor: L.layerGroup([...cased('mnOhv', ['objectid'], recLine('mnOhv')), ...cased('mnSnowmobile', ['objectid'], recLine('mnSnowmobile'))]),
+  mnroads: L.layerGroup(cased('mnForestRoads', ['objectid', 'road_class'], roadStyle)),
+  mnaccess: L.esri.featureLayer({ url:SRC.mnAccess, pane:'recPane', minZoom:10, interactive:false, fields:['objectid', 'launch_type'],
+    pointToLayer:(f, ll) => L.circleMarker(ll, { pane:'recPane', interactive:false, radius:/trailer/i.test(f.properties.launch_type || '') ? 6.5 : 5,
+      color:'#fff', weight:2, fillColor:/trailer/i.test(f.properties.launch_type || '') ? REC.mnAccess.color : '#26a69a', fillOpacity:1 }) }),
   padus: L.esri.featureLayer({ url:SRC.padus, pane:'publicPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5,
     fields:['OBJECTID','Pub_Access'],
     style: f => { const a = ACCESS[f.properties.Pub_Access]; const c = a && a[2] ? css(a[2]) : '#888';
@@ -219,7 +259,7 @@ const layers = LF.layers = {
 // Remember each picture layer's own opacity so Hide shading can put it back.
 ['widnr', 'wiclosed'].forEach(k => { layers[k]._baseOpacity = layers[k].options.opacity; });
 layers.mndnr.eachLayer(l => { l._baseOpacity = l.options.opacity; });
-const defaults = { terrain:false, parcels:true, mncov:true, padus:true, widnr:true, wiclosed:false, wimfl:false, mndnr:true };
+const defaults = { terrain:false, mntrails:false, mnmotor:false, mnroads:false, mnaccess:false, parcels:true, mncov:true, padus:true, widnr:true, wiclosed:false, wimfl:false, mndnr:true };
 const on = LF.on = Object.assign({}, defaults, prefs.get('layers', {}));
 if(fromLink.layers) Object.keys(layers).forEach(k => { on[k] = fromLink.layers.includes(k); });
 
@@ -245,6 +285,9 @@ Object.keys(layers).forEach(k => {
 });
 if(fromLink.layers) prefs.set('layers', on);
 map.on('moveend zoomend', onView); onView();
+let recState = '';   // lines get bolder from zoom 14; casings hide below zoom 10 with their lines
+map.on('zoomend', () => { const z = map.getZoom(), st = (z >= 14) + ',' + (z >= 10); if(st === recState) return; recState = st;
+  ['mntrails', 'mnmotor', 'mnroads'].forEach(k => layers[k].eachLayer(l => l.restyle ? l.restyle() : l.setStyle && l.setStyle(l.options.style))); });
 
 /* Fit bounds into the part of the map you can see: above the sheet on a phone,
    beside it on a desktop, below the top bar. */

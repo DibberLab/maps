@@ -27,6 +27,8 @@ site/                 the whole app: static files, no build step
                       baseFill option lose their fill; pref 'noShade'). Loads right after map.js.
   js/identify.js      tap-to-identify: parallel lookups (15 s timeout each) and the results sheet
                       LF.showSheet(head, body, {pin, onAct, onClose, back:{label, go}}): back draws "‹ Back to …" (items opened from the list).
+                      Phones: dragging the grab bar / title down tucks the sheet to a title strip (LF.tuckSheet; .sheet.tucked), still open;
+                      drag up or tap to restore. Any new panel opens untucked.
   js/search.js        address/coordinate search (Nominatim) and the GPS button
   js/geo.js           distance, acres, bearing, climb, US-unit formatting, GPX/KML export and import (pure; runs in Node)
   js/gps.js           one shared GPS watch (LF.gps.start/stop by user name: 'button', 'track', 'goto'); emits 'gps'.
@@ -136,12 +138,20 @@ All URLs are in the `SRC` block near the top of the app script. If an agency mov
 | `wiMfl` | WI DNR tax-law points (`X13661_FR_GIS_TAXLAW_PT_SV`, services5.arcgis.com) | One point per 40-acre block; `AC_OP_PLS` = acres open to the public. Drawn as dots at zoom 11+, looked up within 300 m. Off by default |
 | `mnDnr` | MN DNR `bdry_dnr_managed_areas` MapServer, layer 3 (`LF.MN_DNR_LAYER`) | WMAs, state forests, SNAs, AMAs; `ACCESS_WO_TRESPASS` |
 | `mnWia` | MN DNR `bdry_dnr_walk_in_access_sites` | Walk-In Access; shares the "MN public hunting" toggle with `mnDnr` |
+| `mnStateTrails`, `mnHunterTrails` | MN DNR `trans_state_trails_minnesota`, `trans_hunter_walking_trails` | Toggle `mntrails`. State trail uses are 0/1 `use_*` fields |
+| `mnOhv`, `mnSnowmobile` | MN DNR `trans_ohv_trails_mn`, `trans_snowmobile_trails_mn` | Toggle `mnmotor`. OHV uses are "X"; snowmobile has the club and contact |
+| `mnForestRoads` | MN DNR `trans_state_forest_roads` | Toggle `mnroads`. `road_class`: System Forest Road (solid) / Minimum Maintenance Road (dashed) |
+| `mnAccess` | MN DNR `struc_water_access_sites` | Toggle `mnaccess`. Trailer launch (blue dot) / carry-in (teal); ramps, docks, parking, directions |
+
+The MN trail/road/access layers (off by default, zoom 10+) are feature layers on `recPane` (430) with white casings copied from the
+same features onto `recCasePane` (429), so each service is queried once. Styles in `LF.REC`. A tap asks only the switched-on ones
+within ~14 px (`recLookup` in identify.js) and puts "Trails, roads & water access" at the top of the panel.
 
 Four sources in the original handoff were dead when checked live on 2026-11-04 (WI DNR lands, WI closed areas and WI MFL renamed or moved; MN DNR's `arcgis.dnr.state.mn.us/host` server returns 404). The rows above are their replacements. WI's real MFL polygon services exist but refuse public access (403), so the points stand in.
 
 All lookups use plain CORS requests. Every server above sends `Access-Control-Allow-Origin`. Don't go back to `useCors:false`: Esri Leaflet's JSONP fallback never calls back when a server answers with an error page, which used to leave the sheet stuck on "Looking up…".
 
-MN DNR's server (`enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr`) also has deer, bear and turkey permit areas, snowmobile/OHV/state trails, state forest roads, water access sites, walk-in trails and public waters. Phase 5 uses these. On the WI side, dnrmaps.wi.gov has `PR_TRAILS`, `FM_Trout`, `WM_DMAP` and `WM_SPECIES_MGMT_ZONES` folders.
+MN DNR's server (`enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr`) also has deer, bear and turkey permit areas, walk-in trails, public waters, trout streams and state forest campgrounds (not used yet). On the WI side, dnrmaps.wi.gov has `PR_TRAILS`, `FM_Trout`, `WM_DMAP` and `WM_SPECIES_MGMT_ZONES` folders.
 
 Base maps: USGS National Map "Imagery Topo" (aerial + roads and labels; the default), imagery only, and topo (all public domain) up to zoom 16 (the USGS tile cache stops there). Past zoom 16 on the aerial bases, "close-up" layers (`LF.closeup` in map.js) draw sharper imagery from image services, 512 px tiles via `exportImage`: WI DNR leaf-off (`DW_Imagery/EN_Image_Basemap_Latest_Leaf_Off`, WROC 2020/2025, ~3-inch to 1-ft pixels, Wisconsin only, bounded) over USGS NAIP Plus (`imagery.nationalmap.gov/.../USGSNAIPPlus`, ~1 ft, nationwide). Setting: leaf-off / summer / off. They take seconds per tile, so the stretched zoom-16 tiles stay underneath. WI's fast cached tiles are in WTM (EPSG:3071), which Leaflet's Web Mercator map can't use; MnGeo's composite is EPSG:26915-only WMS; Esri and Google imagery need paid accounts. Minnesota (leaf-off setting): MnGeo's "best available" composite (`imageserver.gisdata.mn.gov/cgi-bin/mncomp`, county spring/fall imagery, 3-inch in the metro), a JPEG-only WMS in EPSG:26915. `WarpTiles` in map.js asks for the UTM box around each 512 px tile and draws it in 8×8 affine pieces onto Web Mercator (sub-pixel), clipped to `LF.MN_OUTLINE` (js/mn-outline.js: Census TIGERweb, simplified ~250 m, pushed ~300 m outward). Order: NAIP 2, MN 3, WI 4. MnGeo's MnDOT layers cover road corridors only. Terrain shading (`l-terrain`, off by default): USGS 3DEP `Hillshade Multidirectional` (flat = white) multiplied over the base, deepened 2.5× by a CSS filter on `terrainPane`; tiles take 3–9 s. Offline areas can include close-up tiles to map zoom 18 (sw.js serves them from the area caches). and OpenStreetMap tiles (light use only under the OSM tile policy). Address search: Nominatim, max 1 request/second, only fires on Go.
 

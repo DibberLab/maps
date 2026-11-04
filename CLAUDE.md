@@ -7,17 +7,26 @@ There is no app server, database, build step or API key. The browser pulls all m
 ## Layout
 
 ```
-site/index.html   the whole app, one file (~260 KB)
-                  lines ~12-674   Leaflet 1.9.4 CSS (inlined, BSD-2)
-                  lines ~675-759  app CSS (color tokens on :root, dark mode)
-                  lines ~760-806  markup: top bar, layers panel, results sheet
-                  lines ~807-829  Leaflet 1.9.4 + Esri Leaflet 3.0.12 JS (inlined)
-                  lines ~830-end  app code: SRC block, layers, tap-to-identify, search, GPS
-deploy/           nginx site, server deploy script, one-time Mac setup
-.github/workflows/deploy.yml   auto-deploy on push to main
+site/                 the whole app: static files, no build step
+  index.html          markup only: top bar, layers panel, results sheet, script tags
+  app.css             app styles (color tokens on :root, dark mode)
+  js/store.js         LF.prefs (localStorage lf.*), LF.db (IndexedDB: waypoints/tracks/drawings/areas,
+                      backup/restore), LF.listen/LF.emit event bus. Loaded first.
+  js/share.js         LF.share.parse/build for links: #map=z/lat/lng&pin=lat,lng&base=hyb&layers=a,b
+  js/map.js           SRC block (every data service URL), base maps, layers, layers panel, LF.flash
+  js/identify.js      tap-to-identify: parallel lookups (15 s timeout each) and the results sheet
+  js/search.js        address/coordinate search (Nominatim) and the GPS button
+  js/app.js           address bar sync, Share button, install-as-app, backup/restore, service worker
+  sw.js               service worker: app files network-first (4 s) with cache fallback, fonts cache-first.
+                      Map data is NOT cached (offline areas are Phase 3). Bump VERSION when its file list changes.
+  manifest.json, icons/   install-as-app (icons rendered from icons/icon.svg)
+  vendor/             Leaflet 1.9.4 and Esri Leaflet 3.0.12, byte-identical to the official releases
+tools/smoke.js        end-to-end test in headless Chromium against the live services
+deploy/               nginx site, server deploy script, one-time Mac setup
+ROADMAP.md            the onX-style feature plan, by phase
 ```
 
-Edit the app code at the bottom of `index.html`; don't touch the inlined libraries.
+All scripts share one global, `window.LF`. Script order in `index.html` matters.
 
 ## Running locally
 
@@ -25,7 +34,18 @@ Edit the app code at the bottom of `index.html`; don't touch the inlined librari
 cd site && python3 -m http.server 8765    # open http://localhost:8765/
 ```
 
-GPS needs HTTPS or localhost.
+GPS and the service worker need HTTPS or localhost.
+
+Test (needs the server above running; Chromium and Playwright are preinstalled in cloud sessions):
+
+```
+node tools/smoke.js http://localhost:8765/ /tmp/out
+```
+
+It opens a shared link to a Siren, WI parcel, checks the address bar, Share, backup/restore,
+the service worker and offline start-up, renders desktop dark mode, and fails on any script error.
+Cloud sessions can reach the data services directly. Don't point Playwright at the agent proxy,
+because it breaks localhost.
 
 ## Data sources
 
@@ -37,12 +57,19 @@ All URLs are in the `SRC` block near the top of the app script. If an agency mov
 | `mnParcels` | MnGeo `plan_parcels_open` layer 1 | Opted-in counties only. **Never** swap in MnGeo's all-county layer: it's state-agency internal use only |
 | `mnCoverage` | MnGeo `plan_parcels_open` layer 0 | Shades counties not in the free data, links to county GIS |
 | `padus` | USGS PAD-US `Public_Access` | Nationwide; open / restricted / closed. Data from 2024 |
-| `wiDnr` | WI DNR `LF_DNR_MGD_PROPERTY` | `EASE_USE` 4-digit code = hiking/fishing/hunting/trapping (1 = yes) |
-| `wiClosed` | WI DNR `EN_Closed_Restricted_Areas` | Off by default |
-| `wiMfl` | WI DNR `FR_OPFL_PUBLIC_Base` | Off by default. **Unverified**: layer list never checked live |
-| `mnDnr` | MN DNR public access / open space units | WMAs, state forests, Walk-In Access |
+| `wiDnr` | WI DNR `LF_DML/LF_DNR_MGD_PROP_WTM_Ext` | `EASE_USE_CODE` 4 digits = hiking/fishing/hunting/trapping (1 = yes); `PUBLIC_ACCESS` text |
+| `wiClosed` | WI DNR `arcgis2/WM_PROP_MGMT/WM_CLOSED_RESTRICTED_AREAS_WTM_Ext` | Refuges and restrictions, with `RESTRICTIONS`/`EXCEPTIONS` text. Off by default |
+| `wiMfl` | WI DNR tax-law points (`X13661_FR_GIS_TAXLAW_PT_SV`, services5.arcgis.com) | One point per 40-acre block; `AC_OP_PLS` = acres open to the public. Drawn as dots at zoom 11+, looked up within 300 m. Off by default |
+| `mnDnr` | MN DNR `bdry_dnr_managed_areas` MapServer, layer 3 (`LF.MN_DNR_LAYER`) | WMAs, state forests, SNAs, AMAs; `ACCESS_WO_TRESPASS` |
+| `mnWia` | MN DNR `bdry_dnr_walk_in_access_sites` | Walk-In Access; shares the "MN public hunting" toggle with `mnDnr` |
 
-Base maps: USGS National Map imagery and topo (default; public domain) and OpenStreetMap tiles (light use only under the OSM tile policy). Address search: Nominatim, max 1 request/second, only fires on Go.
+Four sources in the original handoff were dead when checked live on 2026-11-04 (WI DNR lands, WI closed areas and WI MFL renamed or moved; MN DNR's `arcgis.dnr.state.mn.us/host` server returns 404). The rows above are their replacements. WI's real MFL polygon services exist but refuse public access (403), so the points stand in.
+
+All lookups use plain CORS requests. Every server above sends `Access-Control-Allow-Origin`. Don't go back to `useCors:false`: Esri Leaflet's JSONP fallback never calls back when a server answers with an error page, which used to leave the sheet stuck on "Looking up…".
+
+MN DNR's server (`enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr`) also has deer, bear and turkey permit areas, snowmobile/OHV/state trails, state forest roads, water access sites, walk-in trails and public waters. Phase 5 uses these. On the WI side, dnrmaps.wi.gov has `PR_TRAILS`, `FM_Trout`, `WM_DMAP` and `WM_SPECIES_MGMT_ZONES` folders.
+
+Base maps: USGS National Map "Imagery Topo" (aerial + roads and labels; the default), imagery only, and topo (all public domain) and OpenStreetMap tiles (light use only under the OSM tile policy). Address search: Nominatim, max 1 request/second, only fires on Go.
 
 Every lookup shows the "not a survey; signs on the ground override this map" warning. Keep it.
 
@@ -52,12 +79,11 @@ Needed for any future CSP or firewall allowlist:
 
 ```
 connect-src / img-src:
-  services3.arcgis.com  services.arcgis.com  static.arcgis.com
-  enterprise.gisdata.mn.gov  arcgis.dnr.state.mn.us
-  dnrmaps.wi.gov  basemap.nationalmap.gov
+  services3.arcgis.com  services5.arcgis.com  services.arcgis.com  static.arcgis.com
+  enterprise.gisdata.mn.gov  dnrmaps.wi.gov  basemap.nationalmap.gov
   tile.openstreetmap.org  nominatim.openstreetmap.org
 style-src: fonts.googleapis.com   font-src: fonts.gstatic.com
-script-src: 'unsafe-inline' plus the ArcGIS hosts above (some services answer as JSONP)
+script-src: 'self' (no inline scripts, no JSONP since Phase 1)
 ```
 
 ## Where it is hosted
@@ -71,4 +97,4 @@ script-src: 'unsafe-inline' plus the ArcGIS hosts above (some services answer as
 
 ## Testing
 
-None of the data services were tested live before launch (the build workspace couldn't reach them). The post-deploy checklist is in the handoff doc: https://claude.ai/artifact/SgBNYv2mBfQW7nJyuqwJR8. When a layer fails, the browser console usually names the URL.
+`tools/smoke.js` covers the main paths (see Running locally). The original post-deploy checklist for a phone is in the handoff doc: https://claude.ai/artifact/SgBNYv2mBfQW7nJyuqwJR8. When a layer fails, the sheet names it ("Did not load: …") and the browser console usually shows the URL.

@@ -10,15 +10,15 @@ Ground rules that carry through every phase:
 - **Keep the "not a survey" warning** on every lookup.
 - **Check each new service live** before shipping it. Service URLs below are starting points and still need checking.
 
-## Phase 1: Foundation
+## Phase 1: Foundation (done)
 
-Everything later needs this.
+Everything later needs this. Also fixed: four dead data sources and lookups that could hang (see CLAUDE.md, Data sources).
 
-- [ ] Split `index.html`: Leaflet and Esri Leaflet into `site/vendor/`, app code into a few plain scripts (`map.js`, `identify.js`, `store.js`, …). Still no build step.
-- [ ] **Install as phone app:** `manifest.json`, icons, and a service worker so "Add to Home Screen" opens full screen.
-- [ ] **Share a spot by link:** map position, layers and the tapped point in the URL (`#18/45.78/-92.38`), plus a Share button using the phone's share sheet.
-- [ ] **Hybrid base map:** USGS imagery with road and place labels on top, made the default.
-- [ ] Device storage module (IndexedDB) with backup/restore, for Phases 2 to 4.
+- [x] Split `index.html`: Leaflet and Esri Leaflet into `site/vendor/`, app code into a few plain scripts (`map.js`, `identify.js`, `store.js`, …). Still no build step.
+- [x] **Install as phone app:** `manifest.json`, icons, and a service worker so "Add to Home Screen" opens full screen.
+- [x] **Share a spot by link:** map position, layers and the tapped point in the URL (`#map=17/45.78/-92.38&pin=…`), plus a Share button using the phone's share sheet.
+- [x] **Hybrid base map:** USGS imagery with road and place labels on top, made the default.
+- [x] Device storage module (IndexedDB) with backup/restore, for Phases 2 to 4.
 
 ## Phase 2: Field tools
 

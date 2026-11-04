@@ -44,7 +44,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.waitForSelector('#f-name');
   await page.click('.iconpick[data-k=stand]');
   await saveForm('North stand');
-  check(/North stand/.test(await page.textContent('#sheetHead')) && /Tree stand/.test(await page.textContent('#sheetHead')), 'waypoint saved with name and icon');
+  check(/North stand/.test(await page.textContent('#sheetHead')) && /Tree stand/i.test(await page.textContent('#sheetHead')), 'waypoint saved with name and icon');
   await page.waitForSelector('.leaflet-marker-icon .wp', { timeout: 3000 }).catch(() => {});
   check(await page.locator('.leaflet-marker-icon .wp').count() === 1, 'waypoint marker on the map');
   await page.click('#closeSheet');
@@ -64,7 +64,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.click('#sheetBody [data-act=edit]');
   await page.click('.iconpick[data-k=blind]');
   await saveForm('North blind');
-  check(/North blind/.test(await page.textContent('#sheetHead')) && /Ground blind/.test(await page.textContent('#sheetHead')), 'edit renames it and changes the icon');
+  check(/North blind/.test(await page.textContent('#sheetHead')) && /Ground blind/i.test(await page.textContent('#sheetHead')), 'edit renames it and changes the icon');
   await page.waitForFunction(() => document.querySelector('.leaflet-marker-icon .wp-label').textContent === 'North blind', null, { timeout: 3000 }).catch(() => {});
   check(await page.textContent('.leaflet-marker-icon .wp-label') === 'North blind', 'map label shows the new name');
   await page.click('#sheetBody [data-act=edit]'); await page.click('.iconpick[data-k=stand]'); await saveForm('North stand');
@@ -181,6 +181,48 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   // 8. Desktop render of saved items.
   await page.click('#closeSheet');
   await page.screenshot({ path: path.join(OUT, 'tools-map.png') });
+
+  // 9. onX-style KML: nested folders kept, item details (id, color, style, width, icon name) on each card.
+  // Wait for the list that's showing now: a closed sheet keeps its old buttons in the page.
+  await tool('list'); await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Saved on this device")'); await page.waitForTimeout(200);
+  await page.setInputFiles('#sheetBody input[data-act=import]', require('path').join(__dirname, 'fixtures/onx-sample.kml'));
+  await page.waitForFunction(() => /Imported 3 items/.test(document.querySelector('#zoomHint').textContent), null, { timeout:8000 }).catch(async () => console.log('   import message:', await page.textContent('#zoomHint')));
+  const got = await page.evaluate(async () => { const w = await LF.db.all('waypoints'), d = await LF.db.all('drawings');
+    return { cross:w.find(x => x.name === 'Creek crossing'), stand:w.find(x => x.name === 'Ridge ladder'), bike:d.find(x => /Bike Ride/.test(x.name)) }; });
+  check(got.cross && got.cross.folder === 'Deer camp' && got.stand.folder === 'Deer camp / Stands', 'KML folders kept, nested: ' + (got.stand && got.stand.folder));
+  check(got.bike && got.bike.folder === 'onx-sample', 'item outside any folder goes into a folder named after the file: ' + (got.bike && got.bike.folder));
+  check(got.cross.icon === 'crossing' && got.cross.iconName === 'Crossing' && got.cross.color === '#ffc800', 'onX icon "Crossing" and rgba color mapped');
+  check(got.stand.icon === 'stand' && got.stand.extra && got.stand.extra.season === '2026 rifle', 'Tree Stand icon, and unknown fields kept');
+  check(got.bike.lineStyle === 'dash' && got.bike.weight === 6 && got.bike.color === '#ff0000' && got.bike.sourceId === '05f03d79-ab01-4c1e-816c-3f521d9ee2c8' &&
+        /Beautiful Day!/.test(got.bike.notes) && !/weight=/.test(got.bike.notes), 'key=value details: name, notes, id, color, dash, width 6');
+  await page.evaluate(id => LF.items.open('drawings', id), got.bike.id);
+  await page.waitForSelector('#sheetBody .block dl');
+  const card = await page.textContent('#sheetBody');
+  check(/Line style\s*Dashed/.test(card) && /Line width\s*6/.test(card) && /Imported ID\s*05f03d79/.test(card) && /#ff0000/.test(card) && /Folder\s*onx-sample/.test(card),
+    'card shows folder, color, style, width and imported id');
+  await page.screenshot({ path: path.join(OUT, 'tools-card.png') });
+
+  // 10. Folders in the list, select all, bulk move and bulk delete.
+  await page.click('#closeSheet');
+  await tool('list'); await page.waitForSelector('#sheetBody .folder');
+  const folders = await page.$$eval('#sheetBody .folder .fname b', b => b.map(x => x.textContent));
+  check(folders.includes('Deer camp') && folders.includes('Deer camp / Stands') && folders.includes('onx-sample'), 'list grouped by folder: ' + folders.join(', '));
+  await page.screenshot({ path: path.join(OUT, 'tools-folders.png') });
+  await page.click('[data-act=sel-start]');
+  await page.click('.folder[data-f="Deer camp"] [data-act=pick-folder]');
+  await page.click('[data-act=bulk-move]'); await page.selectOption('#mv-sel', '__new'); await page.fill('#mv-new', 'Moved');
+  await page.click('[data-act=mv-go]');
+  await page.waitForFunction(() => document.querySelector('.folder[data-f="Moved"]'), null, { timeout:4000 }).catch(() => {});
+  check(await page.evaluate(() => LF.db.all('waypoints').then(w => w.filter(x => x.folder === 'Moved').length)) === 1, 'bulk move to a new folder');
+  const total = await page.evaluate(async () => (await LF.db.all('waypoints')).length + (await LF.db.all('drawings')).length + (await LF.db.all('tracks')).length);
+  await page.evaluate(() => { window.confirm = () => true; });
+  await page.click('[data-act=sel-start]'); await page.click('[data-act=pick-all]');
+  await page.waitForFunction(n => new RegExp('^' + n + ' selected').test(document.querySelector('.selbar .small').textContent), total, { timeout:4000 }).catch(() => {});
+  check(new RegExp('^' + total + ' selected').test(await page.textContent('.selbar .small')), 'select all picks every item: ' + await page.textContent('.selbar .small'));
+  await page.click('[data-act=bulk-del]');
+  await page.waitForTimeout(800);
+  const left = await page.evaluate(async () => (await LF.db.all('waypoints')).length + (await LF.db.all('drawings')).length + (await LF.db.all('tracks')).length);
+  check(left === 0, 'bulk delete removes them all: ' + left + ' left');
 
   check(errors.length === 0, 'no script errors' + (errors.length ? ':\n  ' + errors.join('\n  ') : ''));
   await browser.close();

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Shaped like an onX Hunt KML export: nested folders, item details in ExtendedData or as key=value lines. Made-up data. -->
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>My onX Markups</name>
+<Folder><name>Deer camp</name>
+  <Placemark><name>Creek crossing</name>
+    <ExtendedData><Data name="notes"><value>Deer cross here at dawn</value></Data><Data name="id"><value>a1b2c3d4-0000-4000-8000-000000000001</value></Data>
+      <Data name="color"><value>rgba(255,200,0,1)</value></Data><Data name="icon"><value>Crossing</value></Data></ExtendedData>
+    <Point><coordinates>-92.40,45.79,0</coordinates></Point></Placemark>
+  <Folder><name>Stands</name>
+    <Placemark><name>Ridge ladder</name><ExtendedData><Data name="icon"><value>Tree Stand</value></Data><Data name="season"><value>2026 rifle</value></Data></ExtendedData>
+      <Point><coordinates>-92.41,45.795,0</coordinates></Point></Placemark>
+  </Folder>
+</Folder>
+<Placemark><name>Bike Ride 03/25/26 15:58</name>
+  <description>name=Bike Ride 03/25/26 15:58
+notes=Biked into town, out to the Clam Lake Public Access, up passed the airport, then around Fish Lake. Beautiful Day!
+id=05f03d79-ab01-4c1e-816c-3f521d9ee2c8
+color=rgba(255,0,0,1)
+style=dash
+weight=6.0</description>
+  <LineString><coordinates>-92.38,45.78 -92.37,45.79 -92.36,45.80 -92.35,45.81</coordinates></LineString></Placemark>
+</Document></kml>

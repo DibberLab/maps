@@ -29,6 +29,10 @@ site/                 the whole app: static files, no build step
                       Only a permission denial stops it; signal dropouts just flash "Weak GPS signal".
   js/items.js         saved waypoints/drawings/tracks: map rendering, view and edit sheets, photos (1280 px JPEG data URLs),
                       Go to guide, the saved list, GPX/KML export and import
+                      Folders: r.folder name ("A / B" nests); the list groups by folder (switch, rename, remove, delete), Select mode
+                      for bulk delete / move / hide / show / export. Item details from imports: sourceId, color (+opacity), lineStyle
+                      (solid|dash|dot), weight, iconName (the other app's icon name, mapped by iconFor/ICON_ALIASES), extra {}.
+                      geo.js reads them from KML ExtendedData / GPX extensions / key=value descriptions and writes them back.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

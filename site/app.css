@@ -235,3 +235,37 @@ ol.steps li .small{white-space:nowrap}
 /* Close-up tiles overlap their neighbours by a pixel (see ExportTiles in map.js). Leaflet's own seam fix,
    mix-blend-mode: plus-lighter, would add the overlapping pixels together into white lines. */
 .leaflet-container .hd-tile img.leaflet-tile,.leaflet-container img.leaflet-tile.hd-tile{mix-blend-mode:normal}
+
+/* Folders and select mode */
+.folder{margin-top:10px}
+.fhead{display:flex;align-items:center;gap:6px;border-bottom:2px solid var(--line);padding:4px 0}
+.fname{flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:0;background:transparent;text-align:left;padding:8px 2px;cursor:pointer;font-size:15px}
+.fname b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fname .small{background:var(--panel-2);border-radius:99px;padding:1px 8px}
+.fname .caret{display:inline-block;transition:transform .15s;color:var(--muted)}
+.folder.closed .caret{transform:rotate(-90deg)}
+.folder.closed .rows{display:none}
+.fmore{flex:none;width:36px;height:36px;border:0;border-radius:6px;background:transparent;font-size:20px;cursor:pointer;color:var(--ink)}
+.fmore:hover{background:var(--panel-2)}
+.fmenu{display:flex;flex-wrap:wrap;gap:8px;padding:8px 0}
+.fmenu[hidden]{display:none}
+.fmenu .btn{min-height:36px;padding:5px 12px;font-size:14px}
+.folder .rows{padding-left:6px}
+.chk{flex:none;display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600}
+.chk input{width:22px;height:22px;margin:0 2px;accent-color:var(--blaze);cursor:pointer}
+.row-wrap.picked{background:color-mix(in srgb,var(--blaze) 10%,transparent)}
+.selbar{position:sticky;top:-8px;z-index:2;display:flex;align-items:center;gap:12px;background:var(--panel);padding:8px 0;border-bottom:1px solid var(--line)}
+.selbar .small{flex:1}
+.selacts .btn{min-height:36px;padding:5px 12px;font-size:14px}
+.movebox{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;padding:8px 0}
+.movebox[hidden]{display:none}
+.movebox label{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.movebox select,.movebox input,form.edit select{padding:9px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);font-size:16px}
+.movebox input[hidden]{display:none}
+form.edit select{display:block;width:100%;margin-top:4px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.swatch.custom{position:relative;display:inline-grid;place-items:center;font:700 16px var(--body);color:var(--muted);background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)}
+.swatch.custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.icons{max-height:220px;overflow:auto;padding:2px}
+
+.swatch-sm{display:inline-block}

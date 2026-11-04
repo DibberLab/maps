@@ -165,3 +165,10 @@ form.edit label.btn{display:inline-flex;color:var(--ink);font-size:15px;margin-t
 
 a.btn{text-decoration:none;color:var(--ink)}
 .unit .uses{margin:6px 0 2px}
+
+/* Phase 3: offline areas */
+.estimate{font-weight:600;margin:14px 0 4px}
+.area-row{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-bottom:1px solid var(--line)}
+.area-row .btn{min-height:36px;padding:5px 12px;font-size:14px}
+.linkbtn{border:0;background:none;padding:0;color:var(--blaze);font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
+.saved-note{margin-top:4px;padding:8px 10px;background:var(--panel-2);border-radius:6px}

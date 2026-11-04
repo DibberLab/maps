@@ -20,6 +20,10 @@ const sq = (c, side) => { const a0 = c, b0 = g.dest(a0, 90, side), c0 = g.dest(b
 const outer = sq([45.5, -92.5], 402.336), hole = sq(g.dest(g.dest([45.5, -92.5], 90, 100), 0, 100), 201.168);
 near(g.geojsonArea({ type:'Polygon', coordinates:[outer, hole] }) / g.M2_PER_AC, 30, 0.05, 'GeoJSON polygon with a hole, in acres');
 near(g.geojsonArea({ type:'MultiPolygon', coordinates:[[outer], [sq([46, -92], 402.336)]] }) / g.M2_PER_AC, 80, 0.1, 'GeoJSON multipolygon, in acres');
+const donut = { type:'Polygon', coordinates:[outer, hole] };
+eq(g.pointIn(g.dest(g.dest([45.5, -92.5], 90, 50), 0, 50), donut), true, 'point in polygon');
+eq(g.pointIn(g.dest(g.dest([45.5, -92.5], 90, 200), 0, 200), donut), false, 'point in the hole is outside');
+eq(g.pointIn([45.4, -92.5], donut), false, 'point outside polygon');
 eq(g.fmtDist(100), '328 ft', 'short distance in feet');
 eq(g.fmtDist(1609.344), '1.00 mi', 'one mile');
 eq(g.fmtArea(40 * g.M2_PER_AC), '40.00 ac', 'forty acres');

@@ -109,6 +109,8 @@ tPanel.addEventListener('click', e => {
   const t = b.dataset.tool; tools(false);
   if(t === 'track'){ if(LF.track.recording()) flash('Already recording. Use Stop at the top.'); else LF.track.start(); }
   else if(t === 'list') LF.items.list();
+  else if(t === 'offline-save') LF.offline.save();
+  else if(t === 'offline-list') LF.offline.list();
   else LF.draw.start(t);
 });
 

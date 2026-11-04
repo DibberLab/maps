@@ -32,6 +32,10 @@ site/                 the whole app: static files, no build step
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload
+  js/offline.js       offline areas: saves the framed box's USGS tiles to Cache Storage (lft-<id>) and every parcel and
+                      public land record (with shapes) to LF.db 'areadata'; taps inside a saved area answer from it
+                      (LF.offline.lookup, same shape as live results); parcel lines drawn from it; public land fills
+                      only when navigator.onLine is false. Limit 6000 tiles per area. 'areas'/'areadata' are not backed up.
   js/app.js           address bar sync, Share button, install-as-app, backup/restore, service worker
   sw.js               service worker: app files network-first (4 s) with cache fallback, fonts cache-first.
                       Map data is NOT cached (offline areas are Phase 3). Bump VERSION when its file list changes.
@@ -57,6 +61,7 @@ Test (needs the server above running; Chromium and Playwright are preinstalled i
 ```
 node tools/smoke.js http://localhost:8765/ /tmp/out
 node tools/smoke_tools.js http://localhost:8765/ /tmp/out   # Phase 2 tools, simulated GPS
+node tools/smoke_offline.js http://localhost:8765/ /tmp/out # save an area, go offline, look up
 node tools/test_geo.js                                       # math and formats
 ```
 

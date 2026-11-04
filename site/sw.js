@@ -1,16 +1,18 @@
 /* Line Fence service worker.
    Keeps the app's own files so it opens with no signal, and the fonts.
    Our files: network first (a deploy shows up on the next load), cache if
-   the network is slow or gone. Map data from the state and federal services
-   is not cached here; offline areas come in a later phase.
+   the network is slow or gone. USGS base map tiles come from a saved
+   offline area (caches named lft-<id>, filled by js/offline.js) when there
+   is one, else the network. Offline parcel and public land records live in
+   IndexedDB.
    Bump VERSION when the SHELL list changes. */
-const VERSION = 'lf-shell-2';
+const VERSION = 'lf-shell-3';
 const FONTS = 'lf-fonts-1';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.json',
   'vendor/leaflet-1.9.4.css', 'vendor/leaflet-1.9.4.js', 'vendor/esri-leaflet-3.0.12.js',
   'js/store.js', 'js/share.js', 'js/geo.js', 'js/map.js', 'js/identify.js', 'js/search.js',
-  'js/gps.js', 'js/items.js', 'js/draw.js', 'js/track.js', 'js/app.js',
+  'js/gps.js', 'js/items.js', 'js/draw.js', 'js/track.js', 'js/offline.js', 'js/app.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
 const NETWORK_WAIT_MS = 4000;
@@ -54,5 +56,6 @@ self.addEventListener('fetch', e => {
   if(req.method !== 'GET') return;
   const url = new URL(req.url);
   if(url.origin === self.location.origin) e.respondWith(networkFirst(req));
+  else if(url.hostname === 'basemap.nationalmap.gov') e.respondWith(caches.match(req.url).then(hit => hit || fetch(req)));
   else if(url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') e.respondWith(cacheFirst(req));
 });

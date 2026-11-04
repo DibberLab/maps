@@ -27,11 +27,11 @@ Everything later needs this. Also fixed: four dead data sources and lookups that
 - [x] **Track recording:** record a walk with distance, time, pace and elevation gain; keeps recording with the screen locked where the browser allows it (Wake Lock); "Back to start" guide. Not yet: dragging the corners of a saved drawing to reshape it.
 - [x] Export and import GPX/KML so waypoints and tracks move to and from other apps and GPS units.
 
-## Phase 3: Offline maps
+## Phase 3: Offline maps (done)
 
-- [ ] Draw a box, pick zoom levels, see the estimated size, then download: base map tiles, property lines and public land for that area.
-- [ ] Tap-to-identify works offline from the saved parcel data (owner, acres, public land type).
-- [ ] Manage saved areas: list, size, delete, refresh.
+- [x] Draw a box, pick zoom levels, see the estimated size, then download: base map tiles, property lines and public land for that area.
+- [x] Tap-to-identify works offline from the saved parcel data (owner, acres, public land type).
+- [x] Manage saved areas: list, size, delete, refresh.
 - Limits: USGS tiles only, since the OpenStreetMap tile policy forbids bulk downloads. Browsers cap storage, so ask for persistent storage and show what's used.
 
 ## Phase 4: Conditions and terrain
@@ -47,9 +47,9 @@ Everything later needs this. Also fixed: four dead data sources and lookups that
 - [ ] **Water and landings:** lakes, streams and wetlands (USGS hydrography, WI Wetland Inventory, MN NWI), boat landings, designated trout streams.
 - [ ] **Crops and cover:** USDA Cropland Data Layer (corn, beans, hay) and land cover.
 
-## Phase 6: Accounts and sync
+## Phase 6: Accounts and sync (next, moved ahead of 4 and 5)
 
-The only phase that needs a server, so it needs its own design first.
+Decided 2026-11-04: email + password sign-in; you approve accounts in an admin portal; approved accounts only can save waypoints, tracks, drawings and offline areas; their data is stored on the server and synced. Everyone can use the map, lookups, search, GPS and measuring.
 
 - [ ] Small API and database on the droplet (like budget.dibberlab.me's app), with sign-in.
 - [ ] Sync waypoints, tracks, drawings and offline-area lists between phone and desktop; offline edits merge when back online.

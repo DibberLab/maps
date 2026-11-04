@@ -18,8 +18,11 @@ LF.prefs = {
     if(k && k.startsWith('lf.')) o[k.slice(3)] = JSON.parse(localStorage.getItem(k)); } }catch(e){} return o; }
 };
 
-const DB_NAME = 'linefence', DB_VERSION = 1;
-const STORES = ['waypoints', 'tracks', 'drawings', 'areas'];   // every record has a string `id`
+const DB_NAME = 'linefence', DB_VERSION = 2;
+/* Every record has a string `id`. `areas` (offline area summaries) and `areadata`
+   (their parcels and public land) can be downloaded again, so backups leave them out. */
+const STORES = ['waypoints', 'tracks', 'drawings', 'areas', 'areadata'];
+const BACKUP = ['waypoints', 'tracks', 'drawings'];
 let opening = null;
 
 function open(){
@@ -48,7 +51,7 @@ const listeners = new Set();
 const changed = store => listeners.forEach(f => { try{ f(store); }catch(e){ console.error(e); } });
 
 LF.db = {
-  STORES,
+  STORES, BACKUP,
   newId,
   ready(){ return open().then(() => true, () => false); },
   all(store){ return tx(store, 'readonly', s => s.getAll()).then(r => r || []); },
@@ -59,21 +62,21 @@ LF.db = {
     return tx(store, 'readwrite', s => { s.put(r); }).then(() => { changed(store); return r; });
   },
   del(store, id){ return tx(store, 'readwrite', s => { s.delete(id); }).then(() => changed(store)); },
-  count(){ return Promise.all(STORES.map(s => tx(s, 'readonly', o => o.count()))).then(n => n.reduce((a, b) => a + b, 0)); },
+  count(){ return Promise.all(BACKUP.map(s => tx(s, 'readonly', o => o.count()))).then(n => n.reduce((a, b) => a + b, 0)); },
   onChange(f){ listeners.add(f); return () => listeners.delete(f); },
   /* Ask the browser not to clear our data under storage pressure. */
   persist(){ try{ return navigator.storage && navigator.storage.persist ? navigator.storage.persist() : Promise.resolve(false); }catch(e){ return Promise.resolve(false); } },
 
   async exportAll(){
     const data = {};
-    for(const s of STORES) data[s] = await this.all(s);
+    for(const s of BACKUP) data[s] = await this.all(s);
     return { app:'linefence', format:1, exported:new Date().toISOString(), prefs:LF.prefs.all(), data };
   },
   /* Merges a backup in: records with the same id are replaced by the newer one. */
   async importAll(b){
     if(!b || b.app !== 'linefence' || !b.data) throw new Error('This is not a Line Fence backup file.');
     let n = 0;
-    for(const s of STORES){
+    for(const s of BACKUP){
       for(const rec of (Array.isArray(b.data[s]) ? b.data[s] : [])){
         if(!rec || typeof rec.id !== 'string') continue;
         const cur = await this.get(s, rec.id);

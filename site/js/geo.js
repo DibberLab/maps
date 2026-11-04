@@ -52,6 +52,24 @@ function geojsonArea(g){
   return 0;
 }
 
+/* Is [lat, lng] inside a GeoJSON Polygon/MultiPolygon (holes respected)? */
+function inRing(p, ring){   // ring of [lng, lat]
+  let inside = false;
+  for(let i = 0, j = ring.length - 1; i < ring.length; j = i++){
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if(((yi > p[0]) !== (yj > p[0])) && (p[1] < (xj - xi) * (p[0] - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function pointIn(p, g){
+  if(!g) return false;
+  if(g.type === 'Feature') return pointIn(p, g.geometry);
+  const poly = rings => rings.length && inRing(p, rings[0]) && !rings.slice(1).some(h => inRing(p, h));
+  if(g.type === 'Polygon') return poly(g.coordinates);
+  if(g.type === 'MultiPolygon') return g.coordinates.some(poly);
+  return false;
+}
+
 /* Climb from noisy GPS altitudes: count a rise only once it beats `step` meters. */
 function gain(alts, step){
   step = step || 4;
@@ -172,7 +190,7 @@ function parseFile(text, Parser){
   return out;
 }
 
-const api = { dist, length, area, geojsonArea, bearing, dest, circlePts, centroid, gain, shapePts,
+const api = { dist, length, area, geojsonArea, pointIn, bearing, dest, circlePts, centroid, gain, shapePts,
   fmtDist, fmtArea, fmtTime, fmtPace, fmtFt, fmtBearing, fmtLL, toGPX, toKML, parseFile, M2_PER_AC };
 if(typeof module !== 'undefined' && module.exports) module.exports = api;
 else { root.LF = root.LF || {}; root.LF.geo = api; }

@@ -52,6 +52,8 @@ function identify(url, latlng, layers, geom){
 const both = (a, b) => Promise.all([a, b]).then(([x, y]) => ({ err: x.err && y.err, results: x.results.concat(y.results) }));
 const inWI = ll => ll.lat>42.4 && ll.lat<47.4 && ll.lng>-92.95 && ll.lng<-86.2;
 const inMN = ll => ll.lat>43.4 && ll.lat<49.5 && ll.lng>-97.3 && ll.lng<-89.4;
+/* Shared with offline.js, which saves the same records for an area. */
+LF.lookup = { WI_FIELDS, MN_FIELDS, MFL_FIELDS, mflResults, WI_BOX:[[42.4,-92.95],[47.4,-86.2]], MN_BOX:[[43.4,-97.3],[49.5,-89.4]] };
 
 const WI_CLASS = { '1':'Residential','2':'Commercial','3':'Manufacturing','4':'Agricultural','5':'Undeveloped','5M':'Agricultural forest',
   '6':'Productive forest','7':'Other','X1':'Exempt: federal','X2':'Exempt: state','X3':'Exempt: county','X4':'Exempt: other' };
@@ -92,7 +94,7 @@ let clickSeq = 0;
 map.on('click', e => { if(!LF.mode) inspect(e.latlng); });
 
 LF.inspect = inspect;
-async function inspect(ll){
+async function inspect(ll, opts){
   const seq = ++clickSeq;
   const prev = sheetOnClose; sheetOnClose = null; if(prev) prev();
   sheetHandler = null;
@@ -102,6 +104,8 @@ async function inspect(ll){
   sheet.hidden = false;
   head.innerHTML = `<h2>Looking up…</h2><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
   body.innerHTML = '<div class="loading">Checking parcel and public land records</div>';
+  if(!(opts && opts.live) && await inspectSaved(ll, seq)) return;
+  if(seq !== clickSeq) return;
 
   const jobs = {
     wi: inWI(ll) ? query(SRC.wiParcels, ll, WI_FIELDS) : null,
@@ -117,6 +121,13 @@ async function inspect(ll){
   if(seq !== clickSeq) return;
   render(ll, r);
 }
+/* Inside a saved offline area the saved copy answers at once, signal or not. */
+async function inspectSaved(ll, seq){
+  const got = LF.offline ? await LF.offline.lookup(ll) : null;
+  if(!got || seq !== clickSeq) return false;
+  render(ll, got.r, got.area);
+  return true;
+}
 
 /* ---------- Public land: the whole unit the tap falls in ---------- */
 const MANAGERS = { SDNR:'State DNR', SFW:'State fish & wildlife agency', SPR:'State parks', SLB:'State land board (BCPL)', SDOF:'State forestry',
@@ -130,7 +141,7 @@ const DESIG = { NF:'National Forest', NWR:'National Wildlife Refuge', NP:'Nation
   MIT:'Mitigation land', PROC:'Proclamation boundary', SDA:'Special designation area', RNA:'Research natural area', WSA:'Wilderness study area' };
 const PUBLIC_MANG = /^(FED|STAT|LOC|DIST|JNT)$/;
 const titleCase = s => String(s).toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()).replace(/\b(Wma|Sna|Ama|Dnr|Us|Wia)\b/g, w => w.toUpperCase());
-const toGeo = g => { try{ return g ? L.esri.Util.arcgisToGeoJSON(g) : null; }catch(e){ return null; } };
+const toGeo = g => { try{ return !g ? null : g.type ? g : L.esri.Util.arcgisToGeoJSON(g); }catch(e){ return null; } };
 
 /* State DNR boundaries are whole properties; PAD-US is the fallback (national
    and county forests, federal refuges, local parks). */
@@ -148,8 +159,9 @@ function publicUnit(r, pad){
     return { src:wia, name:a.map_title, acres:+a.acres, geo:toGeo(wia.geometry), manager:'Minnesota DNR Walk-In Access (private land)',
       kind:'Walk-In Access', access:'Walk-in hunting by permit; see MN DNR rules. Uses: ' + (a.uses || '').trim() }; }
   const p = pad.find(f => PUBLIC_MANG.test(f.properties.Mang_Type));
-  if(p){ const a = p.properties;
-    return { pad:p, name:a.Unit_Nm || MANAGERS[a.Mang_Name] || 'Public land', acres:null, padId:a.OBJECTID, padAcres:+a.SUM_GIS_Acres,
+  if(p){ const a = p.properties, g = p.geometry ? p : null;   // saved areas keep the shape
+    return { pad:p, name:a.Unit_Nm || MANAGERS[a.Mang_Name] || 'Public land', geo:g, acres:g ? LF.geo.geojsonArea(g) / LF.geo.M2_PER_AC : null,
+      padId:g ? null : a.OBJECTID, padAcres:+a.SUM_GIS_Acres,
       manager:MANAGERS[a.Mang_Name] || a.Mang_Name, kind:DESIG[a.Des_Tp] || a.Des_Tp, accessCode:a.Pub_Access }; }
   return null;
 }
@@ -177,7 +189,7 @@ function unitBlock(u){
 }
 const unitStyle = () => ({ color:css('--open'), weight:3, fillColor:css('--open'), fillOpacity:.14, dashArray:null });
 
-function render(ll, r){
+function render(ll, r, savedArea){
   const mySeq = clickSeq;
   const parcel = (r.wi && r.wi.features[0] && { st:'WI', f:r.wi.features[0] }) || (r.mn && r.mn.features[0] && { st:'MN', f:r.mn.features[0] });
   const pad = (r.padus && r.padus.features || []).filter(f=>f.properties.Pub_Access!=='UK').concat((r.padus && r.padus.features || []).filter(f=>f.properties.Pub_Access==='UK'));
@@ -272,11 +284,14 @@ function render(ll, r){
   if(access) tags += `<span class="tag ${access[0]}">${esc(access[1])}</span>`;
   if(!parcel && !unit && pad[0]) title = pad[0].properties.Unit_Nm || pad[0].properties.Mang_Name || 'Public land';
   head.innerHTML = `<h2>${esc(title)}</h2><div>${tags}</div><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
+  if(savedArea) html = `<p class="note saved-note">From your offline copy of “${esc(savedArea.name)}”, saved ${new Date(savedArea.updated || savedArea.created).toLocaleDateString('en-US')}.` +
+    ' <button class="linkbtn" data-act="live">Check live data</button></p>' + html;
   html = '<div class="btnrow acts"><button class="btn" data-act="save-wp">Save waypoint</button>' +
     '<button class="btn" data-act="measure">Measure from here</button></div>' + html;
   sheetHandler = act => {
     if(act === 'save-wp') LF.items.newWaypoint([ll.lat, ll.lng], { name: unit ? unit.name : '' });
     if(act === 'measure') LF.draw.start('line', [ll.lat, ll.lng]);
+    if(act === 'live') inspect(ll, { live:true });
     if(act === 'unit-zoom'){
       if(unitLayer) map.fitBounds(unitLayer.getBounds(), { padding:[30, 30] });
       else LF.flash('Still loading the boundary…', 2000);

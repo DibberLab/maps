@@ -81,7 +81,7 @@ function open(c, holeRef){
   const i = c.info || {};
   const web = i.website || i.url;
   const rows = [['Holes', c.n], ['Par', c.par], ['Total length', holes.length && holes.length === c.n ? ft(total) : null],
-    ['Operator', i.operator], ['Fee', i.charge || (i.fee === 'yes' ? 'Yes' : i.fee === 'no' ? 'Free' : i.fee)], ['Hours', i.opening_hours],
+    ['Address', i.address], ['Operator', i.operator], ['Fee', i.charge || (i.fee === 'yes' ? 'Yes' : i.fee === 'no' ? 'Free' : i.fee)], ['Hours', i.opening_hours],
     ['Access', i.access && i.access !== 'yes' ? i.access : null], ['Dogs', i.dog], ['Surface', i.surface], ['Phone', i.phone]]
     .filter(r => r[1] != null && r[1] !== '');
   const table = holes.length ? `<div class="block"><h3>Holes${holes.length < (c.n || 0) ? ` (${holes.length} of ${c.n} mapped)` : ''}</h3>
@@ -91,14 +91,16 @@ function open(c, holeRef){
     : '<p class="small">No hole layout mapped for this course yet.</p>';
   const body = '<div class="btnrow acts">' +
       `<button class="btn primary" data-act="zoom">Show course</button>` +
-      `<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${c.c[0]},${c.c[1]}" target="_blank" rel="noopener">Directions</a>` +
+      `<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${i.address ? encodeURIComponent(i.address) : c.c[0] + ',' + c.c[1]}" target="_blank" rel="noopener">Directions</a>` +
       (web ? `<a class="btn" href="${esc(/^https?:/i.test(web) ? web : 'https://' + web)}" target="_blank" rel="noopener">Website</a>` : '') +
       '<button class="btn" data-act="save">Save waypoint</button></div>' +
     (rows.length ? '<div class="block"><dl>' + rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl></div>' : '') +
     (i.description ? `<div class="block"><p class="notes">${esc(i.description)}</p></div>` : '') + table +
+    (c.src ? `<p class="note">Course details from ${esc(c.src)}. The pin is ${esc(c.located || 'approximate')}. ` +
+      `Know the course? <a href="https://www.openstreetmap.org/#map=17/${c.c[0]}/${c.c[1]}" target="_blank" rel="noopener">Map it on OpenStreetMap</a> and its holes and tees will show up here.</p>` :
     `<p class="note">Course data © OpenStreetMap contributors. Missing or wrong? ` +
     (c.id ? `<a href="https://www.openstreetmap.org/${OSM_TYPE[c.id[0]]}/${c.id.slice(1)}" target="_blank" rel="noopener">Fix it on OpenStreetMap</a>` : `<a href="https://www.openstreetmap.org/#map=17/${c.c[0]}/${c.c[1]}" target="_blank" rel="noopener">Add it to OpenStreetMap</a>`) +
-    '; changes show up here within a month.</p>';
+    '; changes show up here within a month.</p>');
   LF.showSheet(`<h2>${esc(c.name)}</h2><div><span class="tag dg">Disc golf${c.n ? ' · ' + c.n + ' holes' : ''}</span></div><div class="small mono">${geo.fmtLL(c.c)}</div>`,
     body, { pin:c.c, onClose:() => hi.clearLayers(), onAct:(act, el) => {
       if(act === 'zoom') fit(bounds(c), 17);

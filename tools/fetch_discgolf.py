@@ -5,6 +5,7 @@ volunteers have mapped them.
 
     python3 tools/fetch_discgolf.py site/data/discgolf.json
     python3 tools/fetch_discgolf.py out.json --from saved-overpass.json   # rebuild from a saved response
+    python3 tools/fetch_discgolf.py site/data/discgolf.json --extras-only  # just re-merge discgolf_extra.json
 
 Runs in GitHub Actions (.github/workflows/discgolf.yml) because the build
 workspace can't reach Overpass. Standard library only.
@@ -52,6 +53,7 @@ node["disc_golf"](area.s)->.dgn;
 )->.parks;
 .parks out tags geom qt;
 """
+EXTRAS = __import__("os").path.join(__import__("os").path.dirname(__file__), "discgolf_extra.json")
 UA = "LineFence/1.0 (+https://maps.dibberlab.me; disc golf layer, monthly)"
 KEEP = ("operator", "website", "url", "contact:website", "fee", "charge", "access", "opening_hours",
         "description", "surface", "phone", "contact:phone", "dog", "lit")
@@ -275,11 +277,40 @@ def build(data):
             "holes": sum(len(r.get("holes", [])) for r in result)}, "courses": result}
 
 
+def add_extras(ds, path):
+    """Hand-added courses (tools/discgolf_extra.json) that OSM doesn't have yet."""
+    try:
+        with open(path) as f:
+            extras = json.load(f)["courses"]
+    except FileNotFoundError:
+        return ds
+    generic = {"disc", "golf", "course", "dgc", "the", "at", "of", "park", "acres", "putter", "putting", "county", "city", "lake"}
+    words = lambda n: {w for w in n.lower().replace("(", " ").replace(")", " ").replace("'s", "").split() if w not in generic}
+    osm = [c for c in ds["courses"] if not c.get("src")]
+    courses = list(osm)
+    for x in extras:
+        if any(dist(x["c"], c["c"]) < 1500 and words(x["name"]) & words(c["name"]) for c in osm):
+            print(f"  {x['name']} is in OpenStreetMap now; skipping the hand-added copy", file=sys.stderr)
+            continue
+        courses.append(dict(x, id=None))
+    courses.sort(key=lambda r: r["name"].lower())
+    ds["courses"] = courses
+    ds["counts"]["courses"] = len(courses)
+    return ds
+
+
 def main():
     args = sys.argv[1:]
     if not args:
         raise SystemExit(__doc__)
     out = args[0]
+    if "--extras-only" in args:   # re-merge hand-added courses into an existing data file
+        with open(out) as f:
+            ds = add_extras(json.load(f), EXTRAS)
+        with open(out, "w") as f:
+            json.dump(ds, f, separators=(",", ":"))
+        print(json.dumps(ds["counts"]))
+        return
     if "--from" in args:
         with open(args[args.index("--from") + 1]) as f:
             data = json.load(f)
@@ -287,6 +318,7 @@ def main():
         print("Querying Overpass for MN and WI disc golf…", file=sys.stderr)
         data = overpass()
     ds = build(data)
+    ds = add_extras(ds, EXTRAS)
     if ds["counts"]["courses"] < 50 and "--from" not in args:
         raise SystemExit(f"Only {ds['counts']['courses']} courses came back; refusing to overwrite the data file.")
     with open(out, "w") as f:

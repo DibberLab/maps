@@ -1,0 +1,37 @@
+{
+  "_about": "Courses missing from OpenStreetMap, added by hand. tools/fetch_discgolf.py merges these in on every refresh and drops one automatically once OSM has a course with the same name within 1.5 km. Each needs a source. Better still: add the course to openstreetmap.org, then delete it here.",
+  "courses": [
+    {
+      "name": "Tjader Acres Disc Golf Course",
+      "c": [45.77782, -92.43191],
+      "n": 27,
+      "par": 86,
+      "info": {
+        "operator": "Jon Tjader",
+        "charge": "$5 suggested all-day donation; kids 16 and under free",
+        "opening_hours": "Dawn to dusk, year-round",
+        "phone": "(651) 442-5961",
+        "address": "8687 State Road 70, Siren, WI 54872",
+        "dog": "yes",
+        "description": "27 wooded, hilly holes in three 9-hole loops (A, B, C) with 9 layouts; about 3.2 miles of fairways, plan 3 to 3.5 hours. Concrete tees, Prodigy T1 baskets. Pay by cash drop box at hole 1 by the cabin, or Venmo. No garbage cans (bears): pack it out. No drinking water on the course. Open during deer season: wear blaze orange (loaner hats on the cabin porch). Restrooms at the parking lot and hole C."
+      },
+      "src": "the course's own website",
+      "located": "at the course address (8687 State Road 70); the first tee and parking aren't mapped yet"
+    },
+    {
+      "name": "Tjiny Acres (putter course)",
+      "c": [45.77782, -92.43131],
+      "n": 18,
+      "par": 54,
+      "info": {
+        "operator": "Jon Tjader",
+        "charge": "Same pay-what-you-play setup as Tjader Acres",
+        "opening_hours": "Dawn to dusk, year-round",
+        "address": "8687 State Road 70, Siren, WI 54872",
+        "description": "18-hole putter course opened in 2023 next to Tjader Acres: all par 3s, 91 to 138 ft (about 100 ft average), flag-marked tees, Mach III baskets. About a mile of very hilly ground; not cart- or stroller-friendly. 30 to 60 minutes. Putters only."
+      },
+      "src": "the Tjader Acres website",
+      "located": "next to Tjader Acres; exact spot not mapped yet"
+    }
+  ]
+}

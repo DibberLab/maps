@@ -11,6 +11,7 @@ on:
     branches: [main, discgolf]      # discgolf: a trial run that commits to its own branch, no deploy
     paths:
       - tools/fetch_discgolf.py
+      - tools/discgolf_extra.json
       - .github/workflows/discgolf.yml
 
 concurrency:

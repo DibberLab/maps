@@ -37,6 +37,10 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(/About .*map tiles, [\d,]+ parcels/.test(est), 'estimate: ' + est);
   await page.fill('#o-name', 'Siren test');
   await page.click('input[name=o-z][value="15"]');
+  const before = await page.textContent('#o-est');
+  await page.click('#o-hd');
+  const withHd = await page.textContent('#o-est');
+  check(withHd !== before && /map tiles/.test(withHd), 'sharp close-up option adds to the estimate: ' + withHd);
   await page.click('[data-act=o-go]');
   await page.waitForSelector('#offChip:not([hidden])', { timeout: 5000 }).catch(() => {});
   check(await page.isVisible('#offChip'), 'progress chip while saving');
@@ -72,6 +76,11 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(/Parcel · Wisconsin|Parcel at this spot/.test(body) && !/Looking up/.test(head), 'offline parcel lookup: ' + head.replace(/\s+/g, ' ').trim().slice(0, 60));
   await page.screenshot({ path: path.join(OUT, 'offline-lookup.png') });
   await page.click('#closeSheet');
+  // Sharp close-up imagery comes from the saved copy too.
+  await page.evaluate(() => { LF.map.setZoom(18); });
+  await page.waitForTimeout(3000);
+  const hd = await page.evaluate(() => Array.from(document.querySelectorAll('.leaflet-tile-pane img')).filter(i => /exportImage/.test(i.src) && i.complete && i.naturalWidth > 0).length);
+  check(hd > 0, 'sharp close-up imagery draws with no network: ' + hd + ' tiles');
   await ctx.setOffline(false);
 
   // 4. Delete removes the data and the saved tiles.

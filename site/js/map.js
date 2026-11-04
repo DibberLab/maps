@@ -108,11 +108,12 @@ const ACCESS = LF.ACCESS = { OA:['open','Open access','--open'], RA:['restricted
                  XA:['closed','Closed to public','--closed'], UK:['none','Access unknown',''] };
 const css = LF.css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
+const hidden = () => LF.shading && LF.shading.hidden();   // "Hide shading" in the info panel (select.js)
 const layers = LF.layers = {
   padus: L.esri.featureLayer({ url:SRC.padus, pane:'publicPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5,
     fields:['OBJECTID','Pub_Access'],
     style: f => { const a = ACCESS[f.properties.Pub_Access]; const c = a && a[2] ? css(a[2]) : '#888';
-      return { color:c, weight:1, fillColor:c, fillOpacity: a && a[2] ? 0.32 : 0.08 }; } }),
+      return { color:c, weight:hidden() ? 1.6 : 1, fillColor:c, fillOpacity:hidden() ? 0 : a && a[2] ? 0.32 : 0.08 }; } }),
   widnr: L.esri.dynamicMapLayer({ url:SRC.wiDnr, pane:'publicPane', opacity:0.6, f:'image' }),
   wiclosed: L.esri.dynamicMapLayer({ url:SRC.wiClosed, pane:'publicPane', opacity:0.75, f:'image' }),
   wimfl: L.esri.featureLayer({ url:SRC.wiMfl, pane:'publicPane', minZoom:11, interactive:false, where:'AC_OP_PLS > 0', fields:['FID','AC_OP_PLS'],
@@ -125,7 +126,7 @@ const layers = LF.layers = {
     fields:['objectid','countyname','gac_open_approval'],
     style: f => String(f.properties.gac_open_approval).toLowerCase()==='true'
       ? { stroke:false, fill:false }
-      : { color:'#666', weight:1, dashArray:'4 4', fillColor:'#555', fillOpacity:0.25 } }),
+      : { color:'#666', weight:1, dashArray:'4 4', fillColor:'#555', fillOpacity:hidden() ? 0 : 0.25 } }),
   parcels: L.layerGroup([
     L.esri.featureLayer({ url:SRC.wiParcels, pane:'parcelPane', minZoom:PARCEL_ZOOM, interactive:false, fields:['OBJECTID'], precision:6,
       style:()=>({ color:css('--parcel'), weight:1.4, fill:false, opacity:.9 }) }),
@@ -133,6 +134,9 @@ const layers = LF.layers = {
       style:()=>({ color:css('--parcel'), weight:1.4, fill:false, opacity:.9 }) })
   ])
 };
+// Remember each picture layer's own opacity so Hide shading can put it back.
+['widnr', 'wiclosed'].forEach(k => { layers[k]._baseOpacity = layers[k].options.opacity; });
+layers.mndnr.eachLayer(l => { l._baseOpacity = l.options.opacity; });
 const defaults = { parcels:true, mncov:true, padus:true, widnr:true, wiclosed:false, wimfl:false, mndnr:true };
 const on = LF.on = Object.assign({}, defaults, prefs.get('layers', {}));
 if(fromLink.layers) Object.keys(layers).forEach(k => { on[k] = fromLink.layers.includes(k); });

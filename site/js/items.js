@@ -150,8 +150,9 @@ async function redraw(){
     const c = d.color || '#e8590c', o = lineOpts(d, 3);
     if(d.kind === 'line') L.polyline(d.points, o).on('click', tap('drawings', d)).addTo(layer);
     else {
-      const shape = d.kind === 'circle' ? L.circle(d.center, Object.assign({ radius:d.radius }, o, { fillOpacity:.15, interactive:false }))
-                                        : L.polygon(d.points, Object.assign({}, o, { fillOpacity:.15, interactive:false }));
+      const fill = { baseFill:.15, fillOpacity:LF.fillOf(.15), interactive:false };
+      const shape = d.kind === 'circle' ? L.circle(d.center, Object.assign({ radius:d.radius }, o, fill))
+                                        : L.polygon(d.points, Object.assign({}, o, fill));
       shape.addTo(layer);
       L.marker(where('drawings', d), { pane:'savedMarkers', icon:L.divIcon({ className:'area-label', iconSize:null,
         html:`<span style="border-color:${c}">${esc(d.name)} · ${esc(stats('drawings', d)[0][1])}</span>` }) })
@@ -207,7 +208,7 @@ async function open(store, id, opts){
       '<button class="btn" data-act="lookup">Parcel here</button>' +
       '<button class="btn" data-act="gpx">Export</button>' +
       '<button class="btn danger" data-act="delete">Delete</button></div>' +
-    `<label class="switchrow"><span>Show on map<span class="small">${r.hidden ? 'Hidden for now; still saved' : 'Turn off to hide it without deleting'}</span></span>${toggle(store, r)}</label>` +
+    `<label class="switchrow"><span>Show on map<span class="small">${r.hidden ? 'Hidden for now; still saved' : 'Turn off to hide it without deleting'}</span></span>${toggle(store, r)}</label>` + LF.shadeSwitch() +
     '<div class="block">' + dl(stats(store, r).concat(here)) + '</div>' + details(store, r) +
     (r.notes ? `<div class="block"><p class="notes">${esc(r.notes)}</p></div>` : '') +
     (photos ? `<div class="photos">${photos}</div>` : '') +
@@ -227,6 +228,17 @@ async function open(store, id, opts){
       db.del(store, r.id).then(() => { LF.closeSheet(); flash('Deleted'); });
     }
   } });
+  selectItem(store, r);
+}
+/* Draw the open item prominently: a pulsing ring on a waypoint, a bold cased outline on a line, track, area or circle. */
+function selectItem(store, r){
+  const color = store === 'waypoints' ? wpColor(r) : r.color || (store === 'tracks' ? '#d62828' : '#e8590c');
+  if(store === 'waypoints') return LF.select.point([r.lat, r.lng], { color });
+  const w = (r.weight || (store === 'tracks' ? 4 : 3)) + 1;
+  if(r.kind === 'circle') return LF.select.shape(geo.circlePts(r.center, r.radius, 64), { color, weight:w, closed:true, fill:.15 });
+  const pts = (r.points || []).map(p => [p[0], p[1]]); if(pts.length < 2) return;
+  LF.select.shape(pts, { color, weight:w, closed:r.kind === 'area', fill:.15 });
+  if(store === 'tracks') LF.select.point(pts[0], { color });
 }
 
 /* ---------- Editing ---------- */

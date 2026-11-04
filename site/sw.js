@@ -6,12 +6,12 @@
    is one, else the network. Offline parcel and public land records live in
    IndexedDB.
    Bump VERSION when the SHELL list changes. */
-const VERSION = 'lf-shell-10';
+const VERSION = 'lf-shell-11';
 const FONTS = 'lf-fonts-1';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.json',
   'vendor/leaflet-1.9.4.css', 'vendor/leaflet-1.9.4.js', 'vendor/esri-leaflet-3.0.12.js',
-  'js/store.js', 'js/share.js', 'js/geo.js', 'js/map.js', 'js/identify.js', 'js/search.js',
+  'js/store.js', 'js/share.js', 'js/geo.js', 'js/map.js', 'js/select.js', 'js/identify.js', 'js/search.js',
   'js/gps.js', 'js/items.js', 'js/draw.js', 'js/track.js', 'js/offline.js', 'js/labels.js', 'js/route.js', 'js/discgolf.js', 'js/account.js', 'js/sync.js', 'js/settings.js', 'js/menu.js', 'js/app.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];

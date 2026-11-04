@@ -217,8 +217,8 @@ async function refreshLocal(){
     const css = LF.css, g = L.layerGroup();
     g.parcels = L.geoJSON(d.wi.concat(d.mn), { pane:'parcelPane', interactive:false, style:() => ({ color:css('--parcel'), weight:1.4, fill:false, opacity:.9 }) });
     g.publicLand = L.geoJSON(d.padus, { pane:'publicPane', interactive:false, style:f => { const ac = LF.ACCESS[f.properties.Pub_Access]; const c = ac && ac[2] ? css(ac[2]) : '#888';
-      return { color:c, weight:1, fillColor:c, fillOpacity:ac && ac[2] ? 0.32 : 0.08 }; } });
-    g.dnr = L.geoJSON(d.widnr.concat(d.mndnr), { pane:'publicPane', interactive:false, style:f => ({ color:/Walk|Management/.test(f.properties._layer) ? '#8a6bb8' : '#2f7d8c', weight:1.5, fillOpacity:.2 }) });
+      const fo = ac && ac[2] ? 0.32 : 0.08; return { color:c, weight:1, fillColor:c, baseFill:fo, fillOpacity:LF.fillOf(fo) }; } });
+    g.dnr = L.geoJSON(d.widnr.concat(d.mndnr), { pane:'publicPane', interactive:false, style:f => ({ color:/Walk|Management/.test(f.properties._layer) ? '#8a6bb8' : '#2f7d8c', weight:1.5, baseFill:.2, fillOpacity:LF.fillOf(.2) }) });
     shown.set(a.id, g); local.addLayer(g);
   }
   syncLocal();

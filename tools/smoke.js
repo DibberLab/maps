@@ -87,7 +87,16 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
     await page.click('[data-act=unit-zoom]');
     await page.waitForTimeout(800);
     check(await page.evaluate(() => LF.map.getZoom()) < 15, `${name}: Zoom to whole area zooms out to the boundary`);
-    if(name === 'WI DNR'){ await page.waitForTimeout(2000); await page.screenshot({ path: path.join(OUT, 'smoke-public.png') }); }
+    if(name === 'WI DNR'){ await page.waitForTimeout(2000); await page.screenshot({ path: path.join(OUT, 'smoke-public.png') });
+      // The selection is drawn on its own pane, and Hide shading clears the fills (and comes back off).
+      check(await page.evaluate(() => document.querySelectorAll('.leaflet-sel-pane canvas').length > 0), 'selected unit is outlined on the selection pane');
+      check(await page.isVisible('#sheetBody input[data-act=shade]'), 'info panel has a Hide shading switch');
+      await page.click('#sheetBody label:has(input[data-act=shade])');
+      await page.waitForTimeout(1500);
+      check(await page.evaluate(() => LF.shading.hidden() && LF.layers.widnr.options.opacity === 0), 'Hide shading hides the public land fill');
+      await page.screenshot({ path: path.join(OUT, 'smoke-noshade.png') });
+      await page.click('#sheetBody label:has(input[data-act=shade])');
+      check(await page.evaluate(() => !LF.shading.hidden()), 'Hide shading turns back off'); }
   }
   await page.click('#closeSheet');
 

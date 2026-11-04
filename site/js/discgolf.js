@@ -98,7 +98,7 @@ function open(c, holeRef){
       /* UDisc: a direct link when we know the course page, otherwise a web search of udisc.com. */
       (c.udisc || /udisc\.com/i.test(web || '') ? `<a class="btn" href="${esc(c.udisc || web)}" target="_blank" rel="noopener">UDisc</a>`
         : `<a class="btn" href="https://duckduckgo.com/?q=${encodeURIComponent('site:udisc.com/courses ' + c.name.replace(/^Disc golf at /, '') + (/disc golf/i.test(c.name) ? '' : ' disc golf'))}" target="_blank" rel="noopener">Find on UDisc</a>`) +
-      '<button class="btn" data-act="save">Save waypoint</button></div>' +
+      '<button class="btn" data-act="save">Save waypoint</button></div>' + LF.shadeSwitch() +
     (rows.length ? '<div class="block"><dl>' + rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl></div>' : '') +
     (i.description ? `<div class="block"><p class="notes">${esc(i.description)}</p></div>` : '') + table +
     (c.src ? `<p class="note">Course details from ${esc(c.src)}. The pin is ${esc(c.located || 'approximate')}. ` +
@@ -113,6 +113,10 @@ function open(c, holeRef){
       if(act === 'save' && LF.account.require('waypoints')) LF.items.newWaypoint(c.c, { name:c.name });
       if(act === 'hole'){ const h = holes.find(x => String(x.ref || '') === el.dataset.ref); if(h){ focus(h); el.parentNode.querySelectorAll('tr').forEach(r => r.classList.toggle('on', r === el)); } }
     } });
+  // The selected course: its outline (or hole lines) bold and cased, and a pulsing ring at the pin.
+  (c.outline || []).forEach(r => LF.select.shape(r, { color:'#0f766e', weight:3, closed:true, fill:.1 }));
+  if(!(c.outline || []).length) holes.forEach(x => LF.select.shape(x.line, { color:'#0f766e', weight:2 }));
+  LF.select.point(c.c, { color:'#0f766e' });
   const h = holeRef != null && holes.find(x => x.ref === holeRef);
   if(h) focus(h, true);
 }

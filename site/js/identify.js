@@ -64,7 +64,7 @@ function wiClass(v){ if(!has(v)) return null;
 const sheet = document.getElementById('sheet'), head = document.getElementById('sheetHead'), body = document.getElementById('sheetBody');
 let sheetHandler = null, sheetOnClose = null;
 function closeSheet(){
-  sheet.hidden = true; hi.clearLayers(); pin.remove(); clickSeq++;
+  sheet.hidden = true; hi.clearLayers(); pin.remove(); LF.select.clear(); clickSeq++;
   const f = sheetOnClose; sheetHandler = sheetOnClose = null; if(f) f();
   LF.pinLL = null; LF.emit('pin');
 }
@@ -74,13 +74,15 @@ LF.closeSheet = closeSheet;
 body.addEventListener('click', e => { const el = e.target.closest('[data-act]');
   if(el && el.matches('input[type=checkbox], input[type=radio]')) return;   // switches and options act on 'change', once
   if(el && sheetHandler) sheetHandler(el.dataset.act, el, e); });
-body.addEventListener('change', e => { const el = e.target.closest('[data-act]'); if(el && sheetHandler && el.matches('input,select')) sheetHandler(el.dataset.act, el, e); });
+body.addEventListener('change', e => { const el = e.target.closest('[data-act]');
+  if(el && el.dataset.act === 'shade'){ LF.shading.set(el.checked); return; }   // the same switch in every panel
+  if(el && sheetHandler && el.matches('input,select')) sheetHandler(el.dataset.act, el, e); });
 /* Other features (saved items, lists) show their own content in the same sheet.
    opts.pin: the spot the Share button should send (or none). */
 LF.showSheet = function(headHTML, bodyHTML, opts){
   opts = opts || {};
   const prev = sheetOnClose; sheetOnClose = null; if(prev) prev();
-  clickSeq++; hi.clearLayers(); pin.remove();
+  clickSeq++; hi.clearLayers(); pin.remove(); LF.select.clear();
   head.innerHTML = headHTML; body.innerHTML = bodyHTML;
   sheetHandler = opts.onAct || null; sheetOnClose = opts.onClose || null;
   sheet.hidden = false; sheet.scrollTop = 0;
@@ -100,7 +102,7 @@ async function inspect(ll, opts){
   const seq = ++clickSeq;
   const prev = sheetOnClose; sheetOnClose = null; if(prev) prev();
   sheetHandler = null;
-  hi.clearLayers(); pin.setLatLng(ll).addTo(map);
+  hi.clearLayers(); LF.select.clear(); LF.select.point([ll.lat, ll.lng]);
   LF.pinLL = ll; LF.emit('pin');
   document.getElementById('shareBtn').hidden = false;
   sheet.hidden = false;
@@ -189,7 +191,8 @@ function unitBlock(u){
     '<div class="btnrow acts"><button class="btn" data-act="unit-zoom">Zoom to whole area</button>' +
     (u.link ? `<a class="btn" href="${esc(u.link)}" target="_blank" rel="noopener">Property page</a>` : '') + '</div></div>';
 }
-const unitStyle = () => ({ color:css('--open'), weight:3, fillColor:css('--open'), fillOpacity:.14, dashArray:null });
+// The unit's own layer is kept (invisible) for its bounds; LF.select draws the visible outline.
+const unitStyle = () => ({ opacity:0, fillOpacity:0 });
 
 function render(ll, r, savedArea){
   const mySeq = clickSeq;
@@ -200,7 +203,8 @@ function render(ll, r, savedArea){
 
   const unit = publicUnit(r, pad);
   let unitLayer = null;
-  const showUnit = g => { if(!g || mySeq !== clickSeq) return; unitLayer = L.geoJSON(g, { pane:'hiPane', interactive:false, style:unitStyle() }); hi.addLayer(unitLayer); unitLayer.bringToBack(); };
+  const showUnit = g => { if(!g || mySeq !== clickSeq) return; unitLayer = L.geoJSON(g, { pane:'hiPane', interactive:false, style:unitStyle() }); hi.addLayer(unitLayer);
+    LF.select.shape(g, { color:css('--open'), weight:3, fill:.14 }); };
   if(unit){
     html += unitBlock(unit);
     if(unit.geo) showUnit(unit.geo);
@@ -213,7 +217,7 @@ function render(ll, r, savedArea){
   }
 
   if(parcel){
-    hi.addLayer(L.geoJSON(parcel.f, { pane:'hiPane', style:{ color:css('--blaze'), weight:unit ? 2 : 3, fillColor:css('--blaze'), fillOpacity:unit ? 0 : .12 } }));
+    LF.select.shape(parcel.f, { color:css('--blaze'), weight:unit ? 2.5 : 4, fill:unit ? 0 : .12 });
     const p = parcel.f.properties;
     if(parcel.st==='WI'){
       title = has(p.OWNERNME1) ? p.OWNERNME1 : 'Owner not listed';
@@ -288,6 +292,7 @@ function render(ll, r, savedArea){
   head.innerHTML = `<h2>${esc(title)}</h2><div>${tags}</div><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
   if(savedArea) html = `<p class="note saved-note">From your offline copy of “${esc(savedArea.name)}”, saved ${new Date(savedArea.updated || savedArea.created).toLocaleDateString('en-US')}.` +
     ' <button class="linkbtn" data-act="live">Check live data</button></p>' + html;
+  html = LF.shadeSwitch() + html;
   html = '<div class="btnrow acts"><button class="btn" data-act="save-wp">Save waypoint</button>' +
     '<button class="btn" data-act="measure">Measure from here</button><button class="btn" data-act="route">Directions</button></div>' + html;
   sheetHandler = act => {

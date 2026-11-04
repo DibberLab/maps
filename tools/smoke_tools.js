@@ -175,6 +175,12 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.waitForFunction(() => /Imported/.test(document.querySelector('#zoomHint').textContent), null, { timeout: 15000 }).catch(() => {});
   const back = await page.evaluate(() => Promise.all(['waypoints','drawings','tracks'].map(s => LF.db.all(s).then(a => a.length))));
   check(back.join() === '1,3,2', 'GPX import brings back 1 waypoint, 3 drawings, 2 tracks: ' + back.join());
+  // Importing the same file again updates the items instead of doubling them (matched by their id in the file).
+  await page.evaluate(() => LF.db.all('waypoints').then(w => LF.db.put('waypoints', Object.assign(w[0], { folder:'Moved' }))));
+  await page.setInputFiles('#sheetBody input[data-act=import]', gpxFile);
+  await page.waitForFunction(() => /already here/.test(document.querySelector('#zoomHint').textContent), null, { timeout: 15000 }).catch(() => {});
+  const again = await page.evaluate(() => Promise.all(['waypoints','drawings','tracks'].map(s => LF.db.all(s).then(a => a.length))));
+  check(again.join() === '1,3,2', 'importing the same file again doesn\'t double it: ' + again.join());
   const wp = await page.evaluate(() => LF.db.all('waypoints').then(w => w[0]));
   check(wp.name === 'North stand' && wp.icon === 'stand', 'imported waypoint keeps name and icon');
 

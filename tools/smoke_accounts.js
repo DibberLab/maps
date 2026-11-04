@@ -115,6 +115,14 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(await names(phone2) === 'Before sign-in,Ridge stand', 'second device pulls the account\'s waypoints: ' + await names(phone2));
   check(!(await names(phone2)).includes('Boss'), 'accounts only see their own items');
 
+  // 6b. Restoring a backup on one device syncs its changes (here, a folder) to the other.
+  await hunter.evaluate(async () => { const b = await LF.db.exportAll();
+    b.data.waypoints.forEach(w => { if(w.name === 'Ridge stand'){ w.folder = 'Hunting / Stands'; w.updated = Date.now(); } });
+    await LF.db.importAll(b); await LF.sync.now(); });
+  await phone2.evaluate(() => LF.sync.now());
+  check(await phone2.evaluate(() => LF.db.all('waypoints').then(w => (w.find(x => x.name === 'Ridge stand') || {}).folder)) === 'Hunting / Stands',
+    'a restored backup syncs to the other device');
+
   // 7. Delete on one device, gone on the other.
   await phone2.evaluate(() => LF.db.all('waypoints').then(w => LF.db.del('waypoints', w.find(x => x.name === 'Ridge stand').id)));
   await phone2.evaluate(() => LF.sync.now());

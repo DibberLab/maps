@@ -511,23 +511,32 @@ async function importFile(text, name){
   if(!n) throw new Error('No waypoints, routes or tracks found in that file.');
   const fallback = cleanFolder(String(name || 'Imported').replace(/\.(gpx|kml|xml)$/i, '').replace(/[_]+/g, ' ')) || 'Imported';
   const withFolder = r => { r.folder = cleanFolder(r.folder) || fallback; return r; };
+  // Importing the same file again updates what's already here (matched by the other app's id) instead of doubling it.
+  // The saved copy keeps its own id, photos, hidden switch and created date.
+  // Finish any sync first, so items still arriving from the account aren't added a second time.
+  if(LF.sync && LF.sync.now) await Promise.resolve(LF.sync.now()).catch(() => {});
+  const known = {}; let updated = 0;
+  for(const s of ['waypoints', 'drawings', 'tracks']){ known[s] = new Map(); (await db.all(s)).forEach(r => { known[s].set(r.id, r); if(r.sourceId) known[s].set(r.sourceId, r); }); }
+  const keep = (s, r) => { const cur = r.sourceId && known[s].get(r.sourceId); if(!cur) return r; updated++;
+    return Object.assign(r, { id:cur.id, created:cur.created, hidden:cur.hidden, photos:cur.photos && cur.photos.length ? cur.photos : r.photos }); };
   const b = L.latLngBounds([]);
   for(const w of got.waypoints){
     if(!w.iconName && w.symName && !ICONS[w.icon]) w.iconName = w.symName;   // a GPX <sym> like "Crossing"
     delete w.symName;
     w.icon = w.iconName ? iconFor(w.iconName) : ICONS[w.icon] ? w.icon : 'pin';
-    await db.put('waypoints', withFolder(w)); b.extend([w.lat, w.lng]);
+    await db.put('waypoints', keep('waypoints', withFolder(w))); b.extend([w.lat, w.lng]);
   }
-  for(const d of got.drawings){ await db.put('drawings', withFolder(d)); d.points.forEach(p => b.extend(p)); }
+  for(const d of got.drawings){ await db.put('drawings', keep('drawings', withFolder(d))); d.points.forEach(p => b.extend(p)); }
   for(const t of got.tracks){
     const times = t.points.map(p => p[3]).filter(Boolean);
     t.started = times[0] || null; t.ended = times[times.length - 1] || null; t.pausedMs = 0;
-    await db.put('tracks', withFolder(t)); t.points.forEach(p => b.extend([p[0], p[1]]));
+    await db.put('tracks', keep('tracks', withFolder(t))); t.points.forEach(p => b.extend([p[0], p[1]]));
   }
   db.persist();
   if(b.isValid()) map.fitBounds(b, { maxZoom:16, padding:[40, 40] });
   const folders = new Set([].concat(got.waypoints, got.drawings, got.tracks).map(r => r.folder));
-  flash(`Imported ${n} item${n === 1 ? '' : 's'} into ${folders.size === 1 ? '“' + Array.from(folders)[0] + '”' : folders.size + ' folders'}`, 4000);
+  flash(`Imported ${n} item${n === 1 ? '' : 's'} into ${folders.size === 1 ? '“' + Array.from(folders)[0] + '”' : folders.size + ' folders'}` +
+    (updated ? ` (${updated} already here, updated)` : ''), 5000);
 }
 const fileName = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'line-fence';
 function download(name, text, type){

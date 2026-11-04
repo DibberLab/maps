@@ -116,7 +116,7 @@ function toGPX(items){
   const o = ['<?xml version="1.0" encoding="UTF-8"?>',
     '<gpx version="1.1" creator="Line Fence (maps.dibberlab.me)" xmlns="http://www.topografix.com/GPX/1/1" xmlns:lf="https://maps.dibberlab.me/gpx/1">'];
   // GPX has no folders; Line Fence keeps an item's folder in an extension so its own exports round-trip.
-  const fx = r => { const f = { folder:r.folder, id:r.sourceId, color:r.color, style:r.lineStyle, weight:r.weight, icon:r.iconName };
+  const fx = r => { const f = { folder:r.folder, id:r.sourceId || r.id, color:r.color, style:r.lineStyle, weight:r.weight, icon:r.iconName };
     Object.assign(f, r.extra || {});
     const rows = Object.entries(f).filter(([k, v]) => v != null && v !== '' && /^[a-z][\w-]*$/i.test(k)).map(([k, v]) => `<lf:${k}>${xml(v)}</lf:${k}>`).join('');
     return rows ? `<extensions>${rows}</extensions>` : ''; };
@@ -231,8 +231,9 @@ function parseFile(text, Parser){
     kids(doc, 'wpt').forEach(w => { const p = ll(w); if(ok(p)) out.waypoints.push(applyFields({ name:txt(w,'name') || 'Waypoint', notes:txt(w,'desc'), icon:txt(w,'sym').toLowerCase(), symName:txt(w,'sym'), lat:p[0], lng:p[1], folder:fold(w) }, gpxFields(w))); });
     kids(doc, 'rte').forEach(r => {
       const pts = kids(r, 'rtept').map(ll).filter(ok);
-      const isArea = txt(r, 'type') === 'area';
-      if(isArea && pts.length > 3) pts.pop();
+      const isArea = /^area$/i.test(txt(r, 'type'));   // Line Fence writes "area", onX "Area"
+      const a = pts[0], z = pts[pts.length - 1];
+      if(isArea && pts.length > 3 && a[0] === z[0] && a[1] === z[1]) pts.pop();
       if(pts.length >= 2) out.drawings.push(applyFields({ kind:isArea ? 'area' : 'line', name:txt(r,'name') || 'Route', notes:txt(r,'desc'), points:pts, folder:fold(r) }, gpxFields(r)));
     });
     kids(doc, 'trk').forEach(t => {

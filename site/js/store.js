@@ -89,6 +89,7 @@ LF.db = {
         const cur = await this.get(s, rec.id);
         if(cur && (cur.updated || 0) > (rec.updated || 0)) continue;
         await tx(s, 'readwrite', o => { o.put(rec); }); n++;
+        LF.emit('dbWrite', { store:s, id:rec.id });   // so a signed-in account syncs what was restored
       }
       changed(s);
     }

@@ -81,9 +81,10 @@
   <label class="opt"><input type="radio" name="base" id="b-topo" value="topo"> Topo (USGS)</label>
   <label class="opt"><input type="radio" name="base" id="b-osm" value="osm"> Streets (OpenStreetMap)</label>
   <div class="lbl small">Sharp close-up aerial (zoom in past 16; slower to load)</div>
-  <label class="opt"><input type="radio" name="closeup" value="leafoff" checked> Leaf-off spring (Wisconsin), summer elsewhere</label>
+  <label class="opt"><input type="radio" name="closeup" value="leafoff" checked> Leaf-off (WI DNR, MN best available), summer elsewhere</label>
   <label class="opt"><input type="radio" name="closeup" value="summer"> Summer (USGS NAIP)</label>
   <label class="opt"><input type="radio" name="closeup" value="off"> Off (faster)</label>
+  <label class="opt"><input type="checkbox" id="l-terrain"><span class="sw" style="background:linear-gradient(135deg,#eee,#777)"></span> Terrain shading (lidar: ridges, creeks, old roads)</label>
   <h3>Labels</h3>
   <label class="opt"><input type="checkbox" id="l-places" checked><span class="sw" style="border:2px dashed #fff;background:#555"></span> City, village &amp; town limits and names</label>
   <label class="opt"><input type="checkbox" id="l-roadnames" checked><span class="sw" style="background:#555;color:#fff;font:700 9px/12px var(--body);text-align:center">Rd</span> Road names on close-up aerial</label>
@@ -136,6 +137,7 @@
 <script src="js/store.js"></script>
 <script src="js/share.js"></script>
 <script src="js/geo.js"></script>
+<script src="js/mn-outline.js"></script>
 <script src="js/map.js"></script>
 <script src="js/select.js"></script>
 <script src="js/identify.js"></script>

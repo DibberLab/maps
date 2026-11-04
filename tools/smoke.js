@@ -100,6 +100,14 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   }
   await page.click('#closeSheet');
 
+  // 5c. Minnesota close-up: the MnGeo composite, reshaped from UTM, draws over the metro at zoom 18.
+  await page.goto(BASE + '#map=18/45.0935/-93.1300&base=img&layers=parcels');
+  await page.reload();
+  const mnOk = await page.waitForFunction(() => { const c = LF.closeup.mn.getContainer(); return c && c.querySelectorAll('canvas.leaflet-tile-loaded').length > 0; }, null, { timeout: 45000 }).then(() => true, () => false);
+  check(mnOk, 'Minnesota leaf-off close-up tiles draw (MnGeo composite)');
+  await page.screenshot({ path: path.join(OUT, 'smoke-mn-closeup.png') });
+  check(await page.isVisible('#l-terrain') || await page.locator('#l-terrain').count() === 1, 'Terrain shading switch is in the layers panel');
+
   // 6. Desktop layout and dark mode still render.
   const desk = await browser.newPage({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
   desk.on('pageerror', e => errors.push('desktop pageerror: ' + e.message));

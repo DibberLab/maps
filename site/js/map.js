@@ -64,15 +64,86 @@ const ExportTiles = L.TileLayer.extend({
     tile.style.width = (s.x + 2) + 'px'; tile.style.height = (s.y + 2) + 'px'; tile.style.marginLeft = tile.style.marginTop = '-1px'; }
 });
 const HD = { tileSize:512, zoomOffset:-1, minZoom:17, maxZoom:20, maxNativeZoom:20, keepBuffer:1, crossOrigin:true, className:'hd-tile' };
+
+/* ---------- Minnesota leaf-off close-up (MnGeo composite) ----------
+   MnGeo's "best available" composite (mostly spring leaf-off or late fall county imagery, down to 3 in
+   in the metro) is a WMS that only speaks UTM zone 15 (EPSG:26915). Each 512 px map tile asks for the
+   UTM box around it and draws the picture in 8 x 8 pieces, each with its own affine transform, which
+   bends it onto Web Mercator to well under a pixel. Clipped to Minnesota's outline (mn-outline.js) so
+   Wisconsin keeps its DNR imagery and other states keep NAIP. urlFor() matches ExportTiles, so offline
+   areas save these tiles too. */
+function toUTM15(lat, lng){
+  const a = 6378137, f = 1 / 298.257222101, e2 = f * (2 - f), ep2 = e2 / (1 - e2), k0 = 0.9996, lon0 = -93 * Math.PI / 180;
+  const phi = lat * Math.PI / 180, s = Math.sin(phi), c = Math.cos(phi), t = Math.tan(phi);
+  const N = a / Math.sqrt(1 - e2 * s * s), T = t * t, C = ep2 * c * c, A = c * (lng * Math.PI / 180 - lon0);
+  const M = a * ((1 - e2/4 - 3*e2*e2/64 - 5*e2*e2*e2/256) * phi - (3*e2/8 + 3*e2*e2/32 + 45*e2*e2*e2/1024) * Math.sin(2*phi)
+    + (15*e2*e2/256 + 45*e2*e2*e2/1024) * Math.sin(4*phi) - (35*e2*e2*e2/3072) * Math.sin(6*phi));
+  return [k0 * N * (A + (1 - T + C) * A*A*A/6 + (5 - 18*T + T*T + 72*C - 58*ep2) * Math.pow(A, 5)/120) + 500000,
+          k0 * (M + N * t * (A*A/2 + (5 - T + 9*C + 4*C*C) * Math.pow(A, 4)/24 + (61 - 58*T + T*T + 600*C - 330*ep2) * Math.pow(A, 6)/720))];
+}
+const MN_BOUNDS = L.latLngBounds([43.45, -97.3], [49.42, -89.45]);
+const CELLS = 8;
+const WarpTiles = L.GridLayer.extend({
+  initialize(url, opts){ this._svc = url; L.GridLayer.prototype.initialize.call(this, opts); },
+  /* The UTM grid of one 512 px tile at map zoom c.z + 1 (c in the 256-px scheme, like ExportTiles.urlFor). */
+  _grid(c){
+    const z = c.z + 1, pts = [];
+    for(let j = 0; j <= CELLS; j++) for(let i = 0; i <= CELLS; i++){
+      const ll = L.CRS.EPSG3857.pointToLatLng(L.point((c.x + i / CELLS) * 512, (c.y + j / CELLS) * 512), z);
+      pts.push(toUTM15(ll.lat, ll.lng));
+    }
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const m = (x1 - x0) * 0.01; x0 -= m; x1 += m; y0 -= m; y1 += m;
+    const across = Math.hypot(pts[CELLS][0] - pts[0][0], pts[CELLS][1] - pts[0][1]);   // the tile's top edge, metres
+    const w = Math.min(1024, Math.round(512 * (x1 - x0) / across)), h = Math.min(1024, Math.round(512 * (y1 - y0) / across));
+    return { pts, x0, x1, y0, y1, w, h };
+  },
+  urlFor(c){ const g = this._grid(c); return this._url(g); },
+  _url(g){ return `${this._svc}&BBOX=${g.x0.toFixed(1)},${g.y0.toFixed(1)},${g.x1.toFixed(1)},${g.y1.toFixed(1)}&WIDTH=${g.w}&HEIGHT=${g.h}`; },
+  createTile(coords, done){
+    const cv = document.createElement('canvas'); cv.width = cv.height = 512;
+    const c = { x:coords.x, y:coords.y, z:coords.z - 1 }, g = this._grid(c);
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const ctx = cv.getContext('2d'), sx = g.w / (g.x1 - g.x0), sy = g.h / (g.y1 - g.y0);
+      const src = p => [(p[0] - g.x0) * sx, (g.y1 - p[1]) * sy];
+      // Clip to Minnesota.
+      const o = L.point(coords.x * 512, coords.y * 512);
+      ctx.beginPath();
+      (LF.MN_OUTLINE || []).forEach((q, i) => { const p = L.CRS.EPSG3857.latLngToPoint(L.latLng(q[0], q[1]), coords.z).subtract(o); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+      if(LF.MN_OUTLINE) ctx.clip();
+      const step = 512 / CELLS;
+      for(let j = 0; j < CELLS; j++) for(let i = 0; i < CELLS; i++){
+        const k = j * (CELLS + 1) + i, s0 = src(g.pts[k]), s1 = src(g.pts[k + 1]), s2 = src(g.pts[k + CELLS + 1]);
+        // Affine map from picture pixels to this cell: D = M·S + t, from the cell's three corners.
+        const ax = s1[0] - s0[0], ay = s1[1] - s0[1], bx = s2[0] - s0[0], by = s2[1] - s0[1], det = ax * by - ay * bx;
+        if(!det) continue;
+        const ia = by / det, ib = -ay / det, ic = -bx / det, id = ax / det;   // inverse of [[ax,bx],[ay,by]]
+        const m11 = step * ia, m12 = step * ic, m21 = step * ib, m22 = step * id;
+        const dx = i * step, dy = j * step;
+        ctx.save(); ctx.beginPath(); ctx.rect(dx - .5, dy - .5, step + 1, step + 1); ctx.clip();
+        ctx.setTransform(m11, m21, m12, m22, dx - m11 * s0[0] - m12 * s0[1], dy - m21 * s0[0] - m22 * s0[1]);
+        ctx.drawImage(img, 0, 0); ctx.restore();
+      }
+      done(null, cv);
+    };
+    img.onerror = () => done(new Error('tile'), cv);
+    img.src = this._url(g);
+    return cv;
+  }
+});
 const WI_BOUNDS = L.latLngBounds([42.4, -92.95], [47.4, -86.2]);
 const closeup = LF.closeup = {
   naip: new ExportTiles('https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer', '&bandIds=0,1,2',
     Object.assign({ zIndex:2, attribution:'Close-up: USGS NAIP' }, HD)),
   wi: new ExportTiles('https://dnrmaps.wi.gov/arcgis_image/rest/services/DW_Imagery/EN_Image_Basemap_Latest_Leaf_Off/ImageServer', '',
-    Object.assign({ zIndex:3, bounds:WI_BOUNDS, attribution:'Close-up: WI DNR / WROC leaf-off' }, HD))
+    Object.assign({ zIndex:4, bounds:WI_BOUNDS, attribution:'Close-up: WI DNR / WROC leaf-off' }, HD)),
+  mn: new WarpTiles('https://imageserver.gisdata.mn.gov/cgi-bin/mncomp?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=mncomp&STYLES=&CRS=EPSG:26915&FORMAT=image/jpeg',
+    { tileSize:512, minZoom:17, maxZoom:20, keepBuffer:1, zIndex:3, bounds:MN_BOUNDS, className:'hd-tile', attribution:'Close-up: MnGeo composite (MN counties, MnDOT, USDA)' })
 };
-/* Which close-up layers a setting uses: leaf-off draws WI on top of NAIP (NAIP fills gaps and other states). */
-const CLOSEUP = { leafoff:['naip', 'wi'], summer:['naip'], off:[] };
+/* Which close-up layers a setting uses: leaf-off draws MN and WI on top of NAIP (NAIP fills gaps and other states). */
+const CLOSEUP = { leafoff:['naip', 'mn', 'wi'], summer:['naip'], off:[] };
 let closeKey = CLOSEUP[LF.prefs.get('closeup', 'leafoff')] ? LF.prefs.get('closeup', 'leafoff') : 'leafoff';
 function syncCloseup(){
   const want = (baseKey === 'hyb' || baseKey === 'img') ? CLOSEUP[closeKey] : [];
@@ -109,7 +180,18 @@ const ACCESS = LF.ACCESS = { OA:['open','Open access','--open'], RA:['restricted
 const css = LF.css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 const hidden = () => LF.shading && LF.shading.hidden();   // "Hide shading" in the info panel (select.js)
+/* Terrain: USGS 3DEP lidar hillshade (1 m where lidar exists, which is nearly all of WI and MN), multiplied
+   over the base map so ridges, ravines, creek beds, old roads and trails show through the trees. */
+map.createPane('terrainPane'); map.getPane('terrainPane').style.zIndex = 250; map.getPane('terrainPane').style.mixBlendMode = 'multiply';
+map.getPane('terrainPane').style.pointerEvents = 'none';
+// Flat ground is white (no change when multiplied); this deepens the slopes 2.5x so the shading reads on dark aerials.
+map.getPane('terrainPane').style.filter = 'invert(1) brightness(2.5) invert(1)';
+const terrain = new ExportTiles('https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer',
+  '&renderingRule=' + encodeURIComponent('{"rasterFunction":"Hillshade Multidirectional"}'),
+  { tileSize:512, zoomOffset:-1, minZoom:10, maxZoom:20, maxNativeZoom:18, keepBuffer:1, crossOrigin:true, pane:'terrainPane', opacity:1, className:'hd-tile',
+    attribution:'Terrain: USGS 3DEP lidar' });
 const layers = LF.layers = {
+  terrain,
   padus: L.esri.featureLayer({ url:SRC.padus, pane:'publicPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5,
     fields:['OBJECTID','Pub_Access'],
     style: f => { const a = ACCESS[f.properties.Pub_Access]; const c = a && a[2] ? css(a[2]) : '#888';
@@ -137,7 +219,7 @@ const layers = LF.layers = {
 // Remember each picture layer's own opacity so Hide shading can put it back.
 ['widnr', 'wiclosed'].forEach(k => { layers[k]._baseOpacity = layers[k].options.opacity; });
 layers.mndnr.eachLayer(l => { l._baseOpacity = l.options.opacity; });
-const defaults = { parcels:true, mncov:true, padus:true, widnr:true, wiclosed:false, wimfl:false, mndnr:true };
+const defaults = { terrain:false, parcels:true, mncov:true, padus:true, widnr:true, wiclosed:false, wimfl:false, mndnr:true };
 const on = LF.on = Object.assign({}, defaults, prefs.get('layers', {}));
 if(fromLink.layers) Object.keys(layers).forEach(k => { on[k] = fromLink.layers.includes(k); });
 

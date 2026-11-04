@@ -44,6 +44,13 @@ node["disc_golf"](area.s)->.dgn;
   way(bn.dgn)["golf"="hole"];
 )->.holes;
 .holes out body geom qt;
+// Named parks around the courses: unnamed courses take the park's name.
+(.courses; .dgn;)->.all;
+(
+  way(around.all:150)["leisure"~"^(park|nature_reserve|recreation_ground)$"]["name"];
+  relation(around.all:150)["leisure"~"^(park|nature_reserve|recreation_ground)$"]["name"];
+)->.parks;
+.parks out tags geom qt;
 """
 UA = "LineFence/1.0 (+https://maps.dibberlab.me; disc golf layer, monthly)"
 KEEP = ("operator", "website", "url", "contact:website", "fee", "charge", "access", "opening_hours",
@@ -136,6 +143,13 @@ def ref_num(s):
 def build(data):
     els = data.get("elements", [])
     nodes = {e["id"]: e for e in els if e["type"] == "node"}
+    parks = [(e["tags"]["name"], rings_of(e)) for e in els if e.get("tags", {}).get("leisure") in ("park", "nature_reserve", "recreation_ground")
+             and e.get("tags", {}).get("name") and not e.get("tags", {}).get("sport") == "disc_golf" and "disc" not in e["tags"]["name"].lower()]
+    parks = [(n, r) for n, r in parks if r]
+
+    def park_at(p):
+        inside = [(n, r) for n, r in parks if any(in_ring(p, x) for x in r)]
+        return min(inside, key=lambda x: sum(len(y) for y in x[1]))[0] if inside else None
     # Courses
     courses, seen = [], set()
     for e in els:
@@ -231,8 +245,11 @@ def build(data):
     for c in out:
         e, t = c["el"], c["el"].get("tags", {})
         hs = sorted(c["holes"], key=lambda h: (h["ref"] is None, h["ref"] or 0))
-        rec = {"id": (e["type"][0] + str(e["id"])) if e["type"] != "group" else None,
-               "name": t.get("name") or "Disc golf course", "c": r6(c["center"])}
+        name = t.get("name")
+        if not name:
+            park = park_at(c["center"]) or next((park_at(h["line"][0]) for h in c["holes"] if park_at(h["line"][0])), None)
+            name = f"Disc golf at {park}" if park else "Disc golf course"
+        rec = {"id": (e["type"][0] + str(e["id"])) if e["type"] != "group" else None, "name": name, "c": r6(c["center"])}
         n_tag = ref_num(t.get("holes"))
         if n_tag or hs:
             rec["n"] = n_tag or len({h["ref"] for h in hs if h["ref"]}) or len(hs)

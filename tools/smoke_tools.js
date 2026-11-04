@@ -213,9 +213,35 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.click('#menuBtn');
   await page.waitForSelector('#menu:not([hidden]) .mi[data-m=waypoints] .n');
   const wpCount = await page.textContent('.mi[data-m=waypoints] .n');
-  check(+wpCount >= 2 && await page.locator('.mi[data-m=folder]').count() >= 3 && /Tester/.test(await page.textContent('.mi.acct')),
+  check(+wpCount >= 2 && await page.locator('.mi[data-m=folder]').count() >= 2 && /Tester/.test(await page.textContent('.mi.acct')),
     `menu shows the account, ${wpCount} waypoints and the folders`);
+  // Folders are a tree: Deer camp opens to show Stands; its switch hides both without opening the list.
+  await page.click('.mf .caret[data-v="Deer camp"]');
+  await page.waitForSelector('.mi[data-m=folder][data-v="Deer camp / Stands"]');
+  check(true, 'menu folder tree opens a subfolder');
+  const inCamp = () => page.evaluate(() => Promise.all(['waypoints','drawings','tracks'].map(s => LF.db.all(s))).then(a => [].concat(...a)
+    .filter(r => /^Deer camp( \/|$)/.test(r.folder || '')).map(r => !!r.hidden)));
+  await page.click('.mf:has(.mi[data-v="Deer camp"]) .switch');
+  await page.waitForFunction(() => !document.querySelector('.mf:has(.mi[data-v="Deer camp"]) input').checked && !document.querySelector('.mf:has(.mi[data-v="Deer camp"]) input').disabled);
+  const hid = await inCamp();
+  check(hid.length >= 2 && hid.every(Boolean) && await page.isVisible('#menu'), `folder switch hides the folder and its subfolders (${hid.length} items), menu stays open`);
   await page.screenshot({ path: path.join(OUT, 'tools-menu.png') });
+  await page.click('.mf:has(.mi[data-v="Deer camp"]) .switch');
+  await page.waitForFunction(() => document.querySelector('.mf:has(.mi[data-v="Deer camp"]) input').checked && !document.querySelector('.mf:has(.mi[data-v="Deer camp"]) input').disabled);
+  await page.waitForTimeout(300);
+  check((await inCamp()).every(h => !h), 'and shows them again');
+  await page.click('.mi[data-m=folder][data-v="Deer camp"]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Deer camp")');
+  check(await page.locator('#sheetBody .folder[data-f="Deer camp / Stands"]').count() === 1, 'opening a folder lists its subfolders too');
+  // An item opened from the list has a Back link to the same folder view.
+  await page.click('#sheetBody .folder[data-f="Deer camp / Stands"] .row');
+  await page.waitForSelector('#sheetBack');
+  check(/Back to Deer camp/.test(await page.textContent('#sheetBack')), 'item opened from a folder shows Back to Deer camp');
+  await page.screenshot({ path: path.join(OUT, 'tools-back.png') });
+  await page.click('#sheetBack');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Deer camp")');
+  check(await page.locator('#sheetBody .folder[data-f="Deer camp / Stands"]').count() === 1, 'Back returns to the folder list');
+  await page.click('#menuBtn');
   await page.click('.mi[data-m=waypoints]');
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Waypoints")');
   check(await page.locator('#sheetBody .row-wrap').count() === +wpCount && await page.isHidden('#menu'), 'Waypoints opens the list filtered to waypoints');

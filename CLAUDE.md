@@ -26,6 +26,7 @@ site/                 the whole app: static files, no build step
                       the sheet changes) and LF.shading / LF.shadeSwitch() (Hide shading: public land and any path with a
                       baseFill option lose their fill; pref 'noShade'). Loads right after map.js.
   js/identify.js      tap-to-identify: parallel lookups (15 s timeout each) and the results sheet
+                      LF.showSheet(head, body, {pin, onAct, onClose, back:{label, go}}): back draws "‹ Back to …" (items opened from the list).
   js/search.js        address/coordinate search (Nominatim) and the GPS button
   js/geo.js           distance, acres, bearing, climb, US-unit formatting, GPX/KML export and import (pure; runs in Node)
   js/gps.js           one shared GPS watch (LF.gps.start/stop by user name: 'button', 'track', 'goto'); emits 'gps'.
@@ -52,7 +53,9 @@ site/                 the whole app: static files, no build step
                       waterbody layer 12, GNIS_NAME + AREASQKM, LAKE_TIERS by area) and hamlets only where the base picture
                       has none (Aerial only, or z17+ close-up) so names aren't doubled; declutter() hides the lower-ranked
                       of two overlapping names (rank, then population/area).
-      js/menu.js      the main menu from the logo: account, content by type and folder (LF.items.list({type|folder})),
+      js/menu.js      the main menu from the logo: account, content by type, the folder tree (LF.items.tree(): ▸ opens subfolders,
+                      the name opens LF.items.list({folder}) which includes subfolders, a switch hides/shows the whole branch via
+                      LF.items.setFolderHidden; open branches in pref 'menuFoldersOpen'),
                       offline areas, layers, admin portal.
   js/route.js         directions from GPS to a waypoint, track start, course or parcel: OSRM on routing.openstreetmap.de
                       (FOSSGIS; car / bike / foot), one request per tap, credited; draws the route, the off-road last stretch

@@ -15,20 +15,34 @@ const ICON = {
 const svg = k => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 const item = (act, icon, label, extra, data) => `<button class="mi" data-m="${act}"${data ? ` data-v="${esc(data)}"` : ''}>${svg(icon)}<span>${esc(label)}</span>${extra != null ? `<span class="n">${extra}</span>` : ''}</button>`;
 
+/* Folders as a tree: ▸ opens the subfolders, the name opens the list, the switch shows or hides
+   everything in the folder (subfolders too) without opening it. Open branches are remembered. */
+const opened = new Set(LF.prefs.get('menuFoldersOpen', []));
+const branch = d => f => {
+  const kids = f.kids.length, isOpen = opened.has(f.path);
+  return `<div class="mf${f.shown ? '' : ' off'}" style="--d:${d}">` +
+    (kids ? `<button class="caret" data-m="fexp" data-v="${esc(f.path)}" aria-expanded="${isOpen}" aria-label="${isOpen ? 'Close' : 'Open'} ${esc(f.name)}">${isOpen ? '▾' : '▸'}</button>` : '<span class="caret"></span>') +
+    `<button class="mi" data-m="folder" data-v="${esc(f.path)}">${svg('folder')}<span>${esc(f.name)}</span><span class="n">${f.n}</span></button>` +
+    `<span class="switch" title="Show on the map"><input type="checkbox" role="switch" data-fvis="${esc(f.path)}"${f.shown ? ' checked' : ''} aria-label="Show ${esc(f.path)} on map"><span class="knob"></span></span></div>` +
+    (kids && isOpen ? f.kids.map(branch(d + 1)).join('') : '');
+};
 async function render(){
+  const keep = menu.scrollTop;
   const u = LF.account.user(), ok = LF.account.approved();
   let c = null;
-  try{ if(await LF.db.ready()) c = await LF.items.counts(); }catch(e){}
+  let tree = [];
+  try{ if(await LF.db.ready()){ c = await LF.items.counts(); tree = await LF.items.tree(); } }catch(e){}
   body.innerHTML =
     `<button class="mi acct" data-m="account">${svg('user')}<span><b>${esc(u ? (u.name || u.email) : 'Sign in or create an account')}</b>` +
       `<span class="small">${u ? (u.status === 'approved' ? (u.role === 'admin' ? 'Admin · ' : '') + 'signed in' : 'waiting for approval') : 'to save waypoints, tracks and drawings'}</span></span></button>` +
     '<h3>My content</h3>' +
     item('list', 'all', 'Everything', c && c.all) + item('waypoints', 'waypoints', 'Waypoints', c && c.waypoints) + item('tracks', 'tracks', 'Tracks', c && c.tracks) +
     item('line', 'line', 'Lines', c && c.line) + item('area', 'area', 'Areas', c && c.area) +
-    (c && c.folders.length ? '<h3>Folders</h3>' + c.folders.map(([f, n]) => item('folder', 'folder', f, n, f)).join('') : '') +
+    (tree.length ? '<h3>Folders</h3><div class="mtree">' + tree.map(branch(0)).join('') + '</div>' : '') +
     '<h3>Map</h3>' + item('offline', 'offline', 'Offline areas') + item('layers', 'layers', 'Layers & base map') +
     (u && u.role === 'admin' && ok ? item('admin', 'admin', 'Admin portal') : '') +
     '<p class="small menu-foot">Line Fence · property lines, public land and your own marks. Not a survey.</p>';
+  menu.scrollTop = keep;
 }
 function open(){ LF.closePanel(); LF.closeTools(); menu.hidden = false; scrim.hidden = false; btn.setAttribute('aria-expanded', 'true'); render(); menu.querySelector('.close').focus(); }
 function close(){ menu.hidden = true; scrim.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
@@ -36,9 +50,20 @@ btn.addEventListener('click', () => menu.hidden ? open() : close());
 scrim.addEventListener('click', close);
 menu.querySelector('.close').addEventListener('click', close);
 document.addEventListener('keydown', e => { if(e.key === 'Escape' && !menu.hidden) close(); });
+body.addEventListener('change', async e => {
+  const el = e.target; if(el.dataset.fvis == null) return;
+  if(!LF.account.require('waypoints, tracks and drawings')){ el.checked = !el.checked; return; }
+  el.disabled = true;
+  await LF.items.setFolderHidden(el.dataset.fvis, !el.checked);
+  LF.flash((el.checked ? 'Showing “' : 'Hid “') + el.dataset.fvis + '”');
+  render();
+});
 body.addEventListener('click', e => {
+  if(e.target.closest('.switch')) return;   // folder switches act on change, and keep the menu open
   const b = e.target.closest('[data-m]'); if(!b) return;
-  const m = b.dataset.m; close();
+  const m = b.dataset.m;
+  if(m === 'fexp'){ const v = b.dataset.v; opened.has(v) ? opened.delete(v) : opened.add(v); LF.prefs.set('menuFoldersOpen', Array.from(opened)); return render(); }
+  close();
   if(m === 'account') return LF.account.sheet();
   if(m === 'admin'){ location.href = '/admin/'; return; }
   if(m === 'layers') return document.getElementById('layersBtn').click();

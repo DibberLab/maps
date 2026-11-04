@@ -324,3 +324,13 @@ button.brand .burger{margin-right:12px}
 @keyframes selring{0%{transform:scale(.25);opacity:1}100%{transform:scale(1);opacity:0}}
 @media (prefers-reduced-motion:reduce){.sel-pulse i{animation:none;opacity:.8;transform:scale(.6)}.sel-pulse i+i{display:none}}
 .switchrow.compact{padding:6px 0;font-size:.95em;border-bottom:0}
+
+/* Menu folder tree (menu.js): ▸ opens subfolders, the name opens the list, the switch shows/hides the whole folder. */
+.mf{display:flex;align-items:center;gap:2px;padding-left:calc(var(--d, 0) * 16px)}
+.mf .caret{flex:none;width:28px;height:40px;border:0;background:transparent;color:var(--muted);font-size:14px;cursor:pointer;border-radius:6px;padding:0}
+.mf button.caret:hover{background:var(--panel-2)}
+.mf .mi{flex:1;min-width:0;padding-left:4px;gap:8px}
+.mf.off .mi{opacity:.55}
+.mf .switch{transform:scale(.85);margin-right:0}
+.backbtn{display:inline-flex;align-items:center;border:0;background:transparent;color:var(--blaze);font:600 15px/1 inherit;padding:6px 8px 6px 0;margin:0 0 2px;cursor:pointer;min-height:36px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.backbtn:hover{text-decoration:underline}

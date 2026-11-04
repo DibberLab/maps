@@ -213,8 +213,9 @@ async function open(store, id, opts){
     (r.notes ? `<div class="block"><p class="notes">${esc(r.notes)}</p></div>` : '') +
     (photos ? `<div class="photos">${photos}</div>` : '') +
     `<p class="note">Saved on this device ${r.updated ? new Date(r.updated).toLocaleDateString('en-US') : ''}. Back up from the layers panel to keep a copy.</p>`;
-  LF.showSheet(head(store, r), body, { pin:where(store, r), onAct:(act, el) => {
-    if(act === 'edit') edit(store, r);
+  const back = opts && opts.back;
+  LF.showSheet(head(store, r), body, { pin:where(store, r), back, onAct:(act, el) => {
+    if(act === 'edit') edit(store, r, false, back);
     if(act === 'route') LF.route.to(store === 'tracks' ? 'start of ' + (r.name || 'track') : r.name || KIND[r.kind] || 'waypoint', where(store, r));
     if(act === 'goto') goto(store === 'tracks' ? 'Start of ' + (r.name || 'track') : r.name || KIND[r.kind] || 'Waypoint', where(store, r));
     if(act === 'lookup'){ const p = where(store, r); LF.inspect(L.latLng(p[0], p[1])); }
@@ -225,7 +226,7 @@ async function open(store, id, opts){
       el.closest('.switchrow').querySelector('.small').textContent = r.hidden ? 'Hidden for now; still saved' : 'Turn off to hide it without deleting';
     });
     if(act === 'delete' && confirm('Delete "' + (r.name || KIND[store === 'tracks' ? 'tracks' : r.kind || 'waypoints']) + '"? This cannot be undone.')){
-      db.del(store, r.id).then(() => { LF.closeSheet(); flash('Deleted'); });
+      db.del(store, r.id).then(() => { if(back) back.go(); else LF.closeSheet(); flash('Deleted'); });
     }
   } });
   selectItem(store, r);
@@ -242,7 +243,7 @@ function selectItem(store, r){
 }
 
 /* ---------- Editing ---------- */
-function edit(store, r, isNew){
+function edit(store, r, isNew, back){
   let photos = (r.photos || []).slice(), icon = r.icon || 'pin', color = r.color || (store === 'waypoints' ? '' : store === 'tracks' ? '#d62828' : '#e8590c');
   let lineStyle = r.lineStyle || 'solid', weight = r.weight || (store === 'tracks' ? 4 : 3);
   const iconBtns = () => Object.entries(ICONS).map(([k, v]) =>
@@ -276,7 +277,7 @@ function edit(store, r, isNew){
       for(const f of Array.from(el.files || [])){ try{ photos.push(await shrink(f)); }catch(e){ flash('Could not read that photo'); } }
       el.value = ''; $('f-photos').innerHTML = thumbs();
     }
-    if(act === 'cancel'){ if(isNew) LF.closeSheet(); else open(store, r.id); }
+    if(act === 'cancel'){ if(isNew) LF.closeSheet(); else open(store, r.id, { back }); }
     if(act === 'save'){
       if(!LF.account.require(store === 'waypoints' ? 'waypoints' : store)) return;
       const rec = Object.assign({}, r, { name:$('f-name').value.trim() || defaultName(store, r), notes:$('f-notes').value.trim(), color:color || undefined });
@@ -286,7 +287,7 @@ function edit(store, r, isNew){
       try{
         const saved = await db.put(store, rec);
         if(isNew) db.persist();
-        open(store, saved.id);
+        open(store, saved.id, { back });
       }catch(e){ flash(/quota/i.test(e && e.name) ? 'Storage is full. Remove some photos or saved items.' : 'Could not save: ' + (e.message || e), 5000); }
     }
   } });
@@ -321,7 +322,22 @@ LF.items = {
   newTrack(t){ edit('tracks', t, true); },
   goto,
   editTrack(id){ db.get('tracks', id).then(t => t && edit('tracks', t, true)); },
-  list, counts:async () => { const all = await allItems(); const c = { all:all.length, folders:folderNames(all).map(f => [f, all.filter(i => cleanFolder(i.r.folder) === f).length]) };
+  list,
+  /* The folder tree for the menu: [{ name, path, n (items here and below), shown (any showing), kids }]. */
+  tree:async () => {
+    const all = await allItems(), root = { kids:new Map() };
+    all.forEach(i => { let node = root, path = [];
+      geo.folderPath(i.r.folder).forEach(part => { path.push(part);
+        if(!node.kids.has(part)) node.kids.set(part, { name:part, path:geo.folderName(path), n:0, shown:false, kids:new Map() });
+        node = node.kids.get(part); node.n++; if(!i.r.hidden) node.shown = true; }); });
+    const out = m => Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name)).map(k => Object.assign(k, { kids:out(k.kids) }));
+    return out(root.kids);
+  },
+  /* Show or hide everything in a folder and its subfolders. */
+  async setFolderHidden(path, hidden){
+    for(const i of await allItems()) if(under(i.r.folder, path) && !!i.r.hidden !== hidden) await setHidden(i.store, i.r.id, hidden);
+  },
+  counts:async () => { const all = await allItems(); const c = { all:all.length, folders:folderNames(all).map(f => [f, all.filter(i => cleanFolder(i.r.folder) === f).length]) };
     Object.keys(TYPES).forEach(t => { c[t] = all.filter(i => typeOf(i) === t).length; }); return c; }
 };
 
@@ -363,7 +379,7 @@ async function setHidden(store, id, hidden){
    sync with the items and exist while something is in them. Select mode adds checkboxes for bulk
    delete / move / hide / show / export. Collapsed folders are remembered per device. */
 const NO_FOLDER = '';
-let selecting = false, chosen = new Set(), filter = { type:null, folder:null };
+let selecting = false, chosen = new Set(), filter = { type:null, folder:null }, backScroll = null;
 /* What the list shows: a type (waypoints, tracks, line, area) and/or one folder, or everything. */
 const TYPES = { waypoints:'Waypoints', tracks:'Tracks', line:'Lines', area:'Areas' };
 const typeOf = i => i.store === 'drawings' ? (i.r.kind === 'circle' ? 'area' : i.r.kind) : i.store;
@@ -380,6 +396,8 @@ async function allItems(){
     trs.filter(r => !r.recording).map(r => ({ store:'tracks', r, icon:`<span class="swatch-sm" style="background:${r.color || '#d62828'}"></span>`,
       meta:'Track · ' + stats('tracks', r).slice(0, 2).map(x => x[1]).join(' · ') })).sort(byNew));
 }
+/* A folder holds its subfolders: "Siren cabin" covers "Siren cabin / Hunting". '' is "not in a folder". */
+const under = (f, top) => { f = cleanFolder(f); return top ? f === top || f.startsWith(top + ' / ') : !f; };
 const folderNames = items => Array.from(new Set(items.map(i => cleanFolder(i.r.folder)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
 async function list(opts){
@@ -387,7 +405,7 @@ async function list(opts){
   if(opts) filter = { type:opts.type || null, folder:opts.folder != null ? opts.folder : null };
   const sheetEl = document.getElementById('sheet'), keepScroll = !sheetEl.hidden && LF.sheetBody.querySelector('.folders') ? sheetEl.scrollTop : 0;
   const everything = await allItems();
-  const items = everything.filter(i => (!filter.type || typeOf(i) === filter.type) && (filter.folder == null || cleanFolder(i.r.folder) === filter.folder));
+  const items = everything.filter(i => (!filter.type || typeOf(i) === filter.type) && (filter.folder == null || under(i.r.folder, filter.folder)));
   const counts = { all:everything.length }; Object.keys(TYPES).forEach(t => { counts[t] = everything.filter(i => typeOf(i) === t).length; });
   const chips = '<div class="chips-row">' + [['', 'All', counts.all]].concat(Object.entries(TYPES).map(([k, v]) => [k, v, counts[k]])).map(([k, v, n]) =>
       `<button class="fchip${(filter.type || '') === k && filter.folder == null ? ' on' : ''}" data-act="filter" data-t="${k}">${v} <span>${n}</span></button>`).join('') +
@@ -406,7 +424,7 @@ async function list(opts){
       `<button class="row" data-act="${selecting ? 'pick-row' : 'open'}" data-s="${i.store}" data-id="${esc(i.r.id)}" data-k="${esc(k)}">${i.icon}<span><b>${esc(i.r.name || 'Untitled')}</b><span class="small">${esc(i.meta)}${i.r.hidden ? ' · hidden' : ''}</span></span></button>` +
       toggle(i.store, i.r) + '</div>'; };
   const folderBlock = (f, arr) => {
-    const name = f || 'Not in a folder', isClosed = closed.has(f), anyShown = arr.some(i => !i.r.hidden);
+    const name = !f ? 'Not in a folder' : filter.folder && f !== filter.folder && f.startsWith(filter.folder + ' / ') ? f.slice(filter.folder.length + 3) : f, isClosed = closed.has(f), anyShown = arr.some(i => !i.r.hidden);
     const allPicked = arr.every(i => chosen.has(keyOf(i.store, i.r)));
     return `<div class="folder${isClosed ? ' closed' : ''}" data-f="${esc(f)}"><div class="fhead">` +
       (selecting ? `<span class="chk"><input type="checkbox" data-act="pick-folder" data-f="${esc(f)}"${allPicked ? ' checked' : ''} aria-label="Select everything in ${esc(name)}"></span>` : '') +
@@ -443,7 +461,8 @@ async function list(opts){
   LF.showSheet(`<h2>${esc(title)}</h2>`, body, { onAct: async (act, el) => {
     const f = el.dataset.f;
     if(act === 'filter'){ selecting = false; chosen.clear(); return list({ type:el.dataset.t || null }); }
-    if(act === 'open') open(el.dataset.s, el.dataset.id, { fly:true });
+    if(act === 'open'){ const y = sheetEl.scrollTop;
+      open(el.dataset.s, el.dataset.id, { fly:true, back:{ label:'Back to ' + title, go:() => { backScroll = y; list(); } } }); }
     if(act === 'vis'){ await setHidden(el.dataset.s, el.dataset.id, !el.checked); list(); }
     if(act === 'fold'){ closed.has(f) ? closed.delete(f) : closed.add(f); LF.prefs.set('foldersClosed', Array.from(closed)); el.closest('.folder').classList.toggle('closed'); el.setAttribute('aria-expanded', String(!closed.has(f))); }
     if(act === 'fvis'){ for(const i of inFolder(f)) if(!!i.r.hidden === el.checked) await setHidden(i.store, i.r.id, !el.checked); list(); }
@@ -501,6 +520,7 @@ async function list(opts){
   const mv = document.getElementById('mv-sel');
   if(mv) mv.addEventListener('change', () => { document.getElementById('mv-new').hidden = mv.value !== '__new'; });
   if(keepScroll) sheetEl.scrollTop = keepScroll;
+  if(backScroll != null){ sheetEl.scrollTop = backScroll; backScroll = null; }
 }
 
 /* Items keep the folders they had in a KML file (or a Line Fence GPX); everything else goes into a

@@ -83,7 +83,9 @@ LF.showSheet = function(headHTML, bodyHTML, opts){
   opts = opts || {};
   const prev = sheetOnClose; sheetOnClose = null; if(prev) prev();
   clickSeq++; hi.clearLayers(); pin.remove(); LF.select.clear();
-  head.innerHTML = headHTML; body.innerHTML = bodyHTML;
+  // opts.back {label, go}: a "‹ Back" link above the title, to the panel this one was opened from.
+  head.innerHTML = (opts.back ? `<button class="backbtn" id="sheetBack">‹ ${esc(opts.back.label || 'Back')}</button>` : '') + headHTML; body.innerHTML = bodyHTML;
+  if(opts.back) document.getElementById('sheetBack').addEventListener('click', () => opts.back.go());
   sheetHandler = opts.onAct || null; sheetOnClose = opts.onClose || null;
   sheet.hidden = false; sheet.scrollTop = 0;
   document.getElementById('shareBtn').hidden = !opts.pin;

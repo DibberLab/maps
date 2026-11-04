@@ -47,14 +47,20 @@ Everything later needs this. Also fixed: four dead data sources and lookups that
 - [ ] **Water and landings:** lakes, streams and wetlands (USGS hydrography, WI Wetland Inventory, MN NWI), boat landings, designated trout streams.
 - [ ] **Crops and cover:** USDA Cropland Data Layer (corn, beans, hay) and land cover.
 
-## Phase 6: Accounts and sync (next, moved ahead of 4 and 5)
+## Phase 6: Accounts and sync (done, moved ahead of 4 and 5)
 
 Decided 2026-11-04: email + password sign-in; you approve accounts in an admin portal; approved accounts only can save waypoints, tracks, drawings and offline areas; their data is stored on the server and synced. Everyone can use the map, lookups, search, GPS and measuring.
 
-- [ ] Small API and database on the droplet (like budget.dibberlab.me's app), with sign-in.
-- [ ] Sync waypoints, tracks, drawings and offline-area lists between phone and desktop; offline edits merge when back online.
+- [x] API and SQLite database on the droplet, with sign-in (server/app.py).
+- [x] Admin portal at /admin/: approve, turn off, make admin, reset password, delete.
+- [x] Sync waypoints, tracks and drawings between devices; offline edits catch up when back online.
+- [ ] Self-serve password reset by email (needs an email sending service). Until then the admin resets passwords.
 - [ ] Hunting groups: share waypoints and drawings with chosen people.
-- Open questions: sign-in method, who can create accounts, backups, and privacy (waypoint locations are sensitive).
+
+## Next
+
+- [ ] Disc golf courses layer from OpenStreetMap (not UDisc: its terms forbid scraping). Overpass wasn't reachable from the build workspace on 2026-11-04.
+- Phase 4 and Phase 5 above.
 
 ## Not planned
 

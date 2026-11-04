@@ -39,6 +39,32 @@ d "set -e
    echo '    $CERT.pem and $CERT.key (chmod 600 the key), and re-run this script.'
    exit 1"
 
+echo "== 3b. accounts API (server/app.py) as the linefence service"
+# The admin email is asked once and kept on the server in /etc/linefence.env,
+# never in this (public) repo. Signing up with it makes that account an approved admin.
+if ! d 'test -f /etc/linefence.env'; then
+    read -rp "Your email for the Line Fence admin account: " ADMIN
+    case "$ADMIN" in *@*.*) ;; *) echo "!!! That doesn't look like an email. Re-run to try again."; exit 1;; esac
+fi
+d "set -e
+   id linefence >/dev/null 2>&1 || useradd --system --home /var/lib/linefence --shell /usr/sbin/nologin linefence
+   install -d -o linefence -g linefence -m 750 /var/lib/linefence
+   cd /var/www/maps
+   [ -x .venv/bin/python ] || python3 -m venv .venv
+   .venv/bin/pip install --quiet -r server/requirements.txt
+   if [ ! -f /etc/linefence.env ]; then
+     printf 'LF_DB=/var/lib/linefence/linefence.db\nLF_ADMIN_EMAILS=%s\n' '${ADMIN:-}' > /etc/linefence.env
+     chgrp linefence /etc/linefence.env; chmod 640 /etc/linefence.env
+   fi
+   install -m 644 deploy/linefence-api.service /etc/systemd/system/linefence-api.service
+   systemctl daemon-reload
+   systemctl enable --quiet linefence-api
+   systemctl restart linefence-api
+   install -m 755 deploy/linefence-backup /etc/cron.daily/linefence-backup
+   for i in 1 2 3 4 5 6 7 8 9 10; do curl -sf http://127.0.0.1:8010/api/health >/dev/null && break; sleep 1; done
+   curl -sf http://127.0.0.1:8010/api/health >/dev/null || { journalctl -u linefence-api -n 30 --no-pager; exit 1; }
+   echo 'API is up on 127.0.0.1:8010'"
+
 echo "== 4. nginx site (nginx -t gates the reload; a bad config is rolled back)"
 d 'set -e
    cp /var/www/maps/deploy/maps.nginx.conf /etc/nginx/sites-available/maps
@@ -72,6 +98,8 @@ echo "== 10. public check through Cloudflare"
 code=$(curl -s -o /dev/null -w '%{http_code}' "https://$NAME/" || true)
 if [ "$code" = "200" ]; then
     echo "https://$NAME is live."
+    echo "Next: open https://$NAME, tap + then Sign in, and create your account with the admin email."
+    echo "Your admin portal is https://$NAME/admin/"
 else
     echo "!!! https://$NAME answered HTTP ${code:-none} from outside."
     echo "    No DNS answer: add a proxied A record 'maps' -> $H in Cloudflare (dibberlab.me)."

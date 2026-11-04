@@ -2,7 +2,7 @@
 
 Free, phone-friendly map of property lines, owners and public land for Wisconsin and Minnesota. Live at **https://maps.dibberlab.me**. Tap any spot to see the parcel owner, acres, values and taxes, plus any public land and its hunting, fishing and access rules. The GPS button finds the parcel you're standing on.
 
-There is no app server, database, build step or API key. The browser pulls all map data straight from state and federal ArcGIS services. Settings (base map, layers on or off, last view) are saved per browser in `localStorage` under `lf.*` keys.
+The map itself needs no server, build step or API key: the browser pulls all map data straight from state and federal ArcGIS services. Accounts and sync use a small API (`server/app.py`, Flask + SQLite) behind nginx at `/api/` on the same origin. Settings (base map, layers on or off, last view) are saved per browser in `localStorage` under `lf.*` keys.
 
 ## Working rules
 
@@ -36,11 +36,22 @@ site/                 the whole app: static files, no build step
                       public land record (with shapes) to LF.db 'areadata'; taps inside a saved area answer from it
                       (LF.offline.lookup, same shape as live results); parcel lines drawn from it; public land fills
                       only when navigator.onLine is false. Limit 6000 tiles per area. 'areas'/'areadata' are not backed up.
+  js/account.js       sign in/up, account sheet, LF.account.require(what): the gate on waypoints, tracks, saved drawings,
+                      offline areas (measuring, lookups, search, GPS stay open to everyone)
+  js/sync.js          approved accounts: local saves mark items pending (prefs 'syncPending'), pushed in ≤4 MB batches to
+                      POST /api/sync; pulls GET /api/sync?since=<seq>. Newest `updated` wins. First sync on a device adds
+                      its never-synced items to the account; sign-out clears the account's items from the device.
+  admin/              admin portal (index.html + admin.js): approve, move back to waiting, turn off, make/remove admin,
+                      reset password (shows a one-time temporary password), delete
   js/app.js           address bar sync, Share button, install-as-app, backup/restore, service worker
   sw.js               service worker: app files network-first (4 s) with cache fallback, fonts cache-first.
                       Map data is NOT cached (offline areas are Phase 3). Bump VERSION when its file list changes.
   manifest.json, icons/   install-as-app (icons rendered from icons/icon.svg)
   vendor/             Leaflet 1.9.4 and Esri Leaflet 3.0.12, byte-identical to the official releases
+server/app.py         the API: accounts (pending/approved/disabled, user/admin), sessions (HttpOnly cookie, hashed tokens,
+                      90 days), sync, admin endpoints. JSON-only writes + Origin check against CSRF; login rate limit.
+server/test_app.py    API tests (Flask test client)
+tools/run_all.sh      every test suite against a local site + API on fresh databases: bash tools/run_all.sh <venv>
 tools/smoke.js        end-to-end test in headless Chromium against the live services
 deploy/               nginx site, server deploy script, one-time Mac setup
 ROADMAP.md            the onX-style feature plan, by phase
@@ -56,7 +67,16 @@ cd site && python3 -m http.server 8765    # open http://localhost:8765/
 
 GPS and the service worker need HTTPS or localhost.
 
-Test (needs the server above running; Chromium and Playwright are preinstalled in cloud sessions):
+The saving features need the API. To run the site and API together locally:
+
+```
+python3 -m venv .venv && .venv/bin/pip install -r server/requirements.txt
+cd server && LF_DB=/tmp/lf.db LF_ADMIN_EMAILS=you@example.com LF_COOKIE_SECURE=0 LF_STATIC=$PWD/../site \
+  ../.venv/bin/gunicorn -b 127.0.0.1:8766 app:app        # open http://127.0.0.1:8766/
+```
+
+All tests: `bash tools/run_all.sh .venv` (each browser suite gets a fresh database). Individually
+(Chromium and Playwright are preinstalled in cloud sessions):
 
 ```
 node tools/smoke.js http://localhost:8765/ /tmp/out
@@ -114,7 +134,9 @@ script-src: 'self' (no inline scripts, no JSONP since Phase 1)
 - dibberlab droplet, nginx, behind Cloudflare (same as budget.dibberlab.me). Code is a git checkout of `main` at `/var/www/maps`; nginx serves `site/`. Config: `deploy/maps.nginx.conf`.
 - TLS: Cloudflare origin cert at `/etc/ssl/cloudflare/maps.dibberlab.me.{pem,key}`.
 - `Permissions-Policy` must keep `geolocation=(self)`, or the GPS button fails. (budget's config sets `geolocation=()`; don't copy it.)
-- **Deploying is pushing to `main`.** GitHub Actions SSHes in with a key locked to `/usr/local/bin/maps-deploy`, which pulls and checks the page answers. See `deploy/AUTODEPLOY.md`.
+- **Deploying is pushing to `main`.** GitHub Actions SSHes in with a key locked to `/usr/local/bin/maps-deploy`, which pulls, restarts `linefence-api` when `server/` changed (reinstalling packages if `server/requirements.txt` changed), and checks the page and `/api/health` answer. See `deploy/AUTODEPLOY.md`.
+- **The API on the droplet:** systemd `linefence-api` (gunicorn, 127.0.0.1:8010, user `linefence`), venv `/var/www/maps/.venv`, settings `/etc/linefence.env` (`LF_DB`, `LF_ADMIN_EMAILS`; the admin email is kept there, never in this public repo), database `/var/lib/linefence/linefence.db`, nightly copies in `/var/backups/linefence` (14 days, `/etc/cron.daily/linefence-backup`). Logs: `journalctl -u linefence-api`.
+- To add another admin without the portal: add the email to `LF_ADMIN_EMAILS` in `/etc/linefence.env` and restart `linefence-api` before they sign up. In the portal, Make admin works for any approved account.
 - One-time setup is `deploy/setup-from-mac.sh`, run on Andrew's Mac, the only machine with the droplet SSH key. Cloud sessions can't reach the droplet.
 - Server-ops discipline: `nginx -t`, then reload, then commit and push `/etc/nginx` from the server. Stage files by name there, never `git add -A`.
 

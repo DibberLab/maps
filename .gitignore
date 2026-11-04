@@ -3,3 +3,4 @@ __pycache__/
 node_modules/
 smoke-*.png
 smoke-backup.json
+.venv

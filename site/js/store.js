@@ -59,9 +59,14 @@ LF.db = {
   put(store, rec){
     const r = Object.assign({}, rec); if(!r.id) r.id = newId();
     r.updated = Date.now(); if(!r.created) r.created = r.updated;
-    return tx(store, 'readwrite', s => { s.put(r); }).then(() => { changed(store); return r; });
+    return tx(store, 'readwrite', s => { s.put(r); }).then(() => { changed(store); LF.emit('dbWrite', { store, id:r.id }); return r; });
   },
-  del(store, id){ return tx(store, 'readwrite', s => { s.delete(id); }).then(() => changed(store)); },
+  del(store, id){ return tx(store, 'readwrite', s => { s.delete(id); }).then(() => { changed(store); LF.emit('dbWrite', { store, id, deleted:true }); }); },
+  /* For sync: write what the server sent as-is (its own timestamps) without
+     marking it as a local change to send back. */
+  apply(store, rec){ return tx(store, 'readwrite', s => { s.put(rec); }).then(() => changed(store)); },
+  remove(store, id){ return tx(store, 'readwrite', s => { s.delete(id); }).then(() => changed(store)); },
+  clear(store){ return tx(store, 'readwrite', s => { s.clear(); }).then(() => changed(store)); },
   count(){ return Promise.all(BACKUP.map(s => tx(s, 'readonly', o => o.count()))).then(n => n.reduce((a, b) => a + b, 0)); },
   onChange(f){ listeners.add(f); return () => listeners.delete(f); },
   /* Ask the browser not to clear our data under storage pressure. */
@@ -70,7 +75,9 @@ LF.db = {
   async exportAll(){
     const data = {};
     for(const s of BACKUP) data[s] = await this.all(s);
-    return { app:'linefence', format:1, exported:new Date().toISOString(), prefs:LF.prefs.all(), data };
+    // Sync bookkeeping and the signed-in account belong to this device, not the backup.
+    const prefs = LF.prefs.all(); Object.keys(prefs).forEach(k => { if(/^(sync|account)/.test(k)) delete prefs[k]; });
+    return { app:'linefence', format:1, exported:new Date().toISOString(), prefs, data };
   },
   /* Merges a backup in: records with the same id are replaced by the newer one. */
   async importAll(b){
@@ -85,7 +92,7 @@ LF.db = {
       }
       changed(s);
     }
-    if(b.prefs && typeof b.prefs === 'object') Object.entries(b.prefs).forEach(([k, v]) => LF.prefs.set(k, v));
+    if(b.prefs && typeof b.prefs === 'object') Object.entries(b.prefs).forEach(([k, v]) => { if(!/^(sync|account)/.test(k)) LF.prefs.set(k, v); });
     return n;
   }
 };

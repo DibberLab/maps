@@ -175,6 +175,7 @@ function edit(store, r, isNew){
     }
     if(act === 'cancel'){ if(isNew) LF.closeSheet(); else open(store, r.id); }
     if(act === 'save'){
+      if(!LF.account.require(store === 'waypoints' ? 'waypoints' : store)) return;
       const rec = Object.assign({}, r, { name:$('f-name').value.trim() || defaultName(store, r), notes:$('f-notes').value.trim(), color:color || undefined });
       if(store === 'waypoints'){ rec.icon = icon; rec.photos = photos; }
       try{

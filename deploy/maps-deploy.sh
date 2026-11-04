@@ -28,6 +28,29 @@ if ! git diff --quiet "$before" "$after" -- deploy/maps.nginx.conf; then
     echo "!!! deploy/maps.nginx.conf changed. Install it by hand (nginx -t first)."
 fi
 
+# The API (server/): reinstall packages if they changed, restart if any of it changed.
+if [ -d .venv ]; then
+    if ! git diff --quiet "$before" "$after" -- server/requirements.txt; then
+        echo ">>> server/requirements.txt changed, installing packages"
+        .venv/bin/pip install --quiet -r server/requirements.txt
+    fi
+    if ! git diff --quiet "$before" "$after" -- server/; then
+        systemctl restart linefence-api
+        echo ">>> restarted linefence-api"
+    fi
+    for _ in $(seq 1 10); do
+        api=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8010/api/health || true)
+        [ "$api" = "200" ] && break
+        sleep 1
+    done
+    if [ "$api" != "200" ]; then
+        echo "!!! linefence-api is not answering. Recent logs:"
+        journalctl -u linefence-api --since "-2min" --no-pager | tail -30
+        exit 1
+    fi
+    echo ">>> API is up"
+fi
+
 # Check nginx serves the page locally, bypassing Cloudflare.
 code=$(curl -sk -o /dev/null -w '%{http_code}' \
     --resolve maps.dibberlab.me:443:127.0.0.1 \

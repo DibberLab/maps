@@ -289,7 +289,7 @@ function render(ll, r, savedArea){
   html = '<div class="btnrow acts"><button class="btn" data-act="save-wp">Save waypoint</button>' +
     '<button class="btn" data-act="measure">Measure from here</button></div>' + html;
   sheetHandler = act => {
-    if(act === 'save-wp') LF.items.newWaypoint([ll.lat, ll.lng], { name: unit ? unit.name : '' });
+    if(act === 'save-wp' && LF.account.require('waypoints')) LF.items.newWaypoint([ll.lat, ll.lng], { name: unit ? unit.name : '' });
     if(act === 'measure') LF.draw.start('line', [ll.lat, ll.lng]);
     if(act === 'live') inspect(ll, { live:true });
     if(act === 'unit-zoom'){

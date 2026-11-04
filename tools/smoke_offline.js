@@ -1,6 +1,6 @@
 /* Phase 3 end-to-end test: save a small area for offline, cut the network,
    reload, and check the map, parcel lines and parcel lookups still work.
-   Usage:  (cd site && python3 -m http.server 8765) &   then
+   Needs the API (saving requires an approved account): run it with tools/run_all.sh, or
            node tools/smoke_offline.js [http://localhost:8765/] [out-dir]
    Downloads a few dozen USGS tiles and a few hundred parcels near Siren, WI. */
 const { chromium, devices } = require('playwright');
@@ -22,6 +22,13 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.goto(BASE + `#map=16/${SPOT.lat}/${SPOT.lng}&layers=parcels,padus,widnr`);
   await page.waitForFunction(() => window.LF && LF.offline && navigator.serviceWorker.controller, null, { timeout: 15000 })
     .catch(async () => { await page.reload(); await page.waitForFunction(() => window.LF && LF.offline && navigator.serviceWorker.controller); });
+
+  // Saving needs an approved account: sign up (or in) as the test admin.
+  await page.evaluate(async () => {
+    const c = { email:'tester@example.com', password:'correct horse', name:'Tester' };
+    try{ await LF.api('POST', 'signup', c); }catch(e){ await LF.api('POST', 'login', c); }
+    await LF.account.refresh();
+  });
 
   // 1. The save sheet frames the area and estimates its size.
   await page.click('#toolsBtn'); await page.click('[data-tool=offline-save]');

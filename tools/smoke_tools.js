@@ -1,6 +1,6 @@
 /* Phase 2 end-to-end test: waypoints, measuring and drawing, track recording
    with simulated GPS, the saved list, and a GPX export → import round trip.
-   Usage:  (cd site && python3 -m http.server 8765) &   then
+   Needs the API (saving requires an approved account): run it with tools/run_all.sh, or
            node tools/smoke_tools.js [http://localhost:8765/] [out-dir]
    Uses a fresh browser profile, so nothing here touches real saved data. */
 const { chromium, devices } = require('playwright');
@@ -23,6 +23,13 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   page.on('console', m => { if(m.type() === 'error') errors.push('console: ' + m.text()); });
   await page.goto(BASE + `#map=16/${START.latitude}/${START.longitude}&layers=parcels`);
   await page.waitForFunction(() => window.LF && LF.items && LF.db);
+
+  // Saving needs an approved account: sign up (or in) as the test admin.
+  await page.evaluate(async () => {
+    const c = { email:'tester@example.com', password:'correct horse', name:'Tester' };
+    try{ await LF.api('POST', 'signup', c); }catch(e){ await LF.api('POST', 'login', c); }
+    await LF.account.refresh();
+  });
   const vw = page.viewportSize();
   const at = (fx, fy) => page.mouse.click(Math.round(vw.width * fx), Math.round(vw.height * fy));
   const tool = async t => { await page.click('#toolsBtn'); await page.click(`[data-tool=${t}]`); };

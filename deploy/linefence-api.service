@@ -1,0 +1,23 @@
+# /etc/systemd/system/linefence-api.service
+# Line Fence accounts and sync API (server/app.py), behind nginx at /api/.
+# Installed by deploy/setup-from-mac.sh; settings live in /etc/linefence.env.
+[Unit]
+Description=Line Fence API
+After=network.target
+
+[Service]
+User=linefence
+Group=linefence
+WorkingDirectory=/var/www/maps/server
+EnvironmentFile=/etc/linefence.env
+ExecStart=/var/www/maps/.venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8010 --access-logfile - app:app
+Restart=on-failure
+# The app only needs to write its database folder.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/linefence
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

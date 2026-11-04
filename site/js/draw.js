@@ -77,6 +77,7 @@ btns.addEventListener('click', e => {
     else { flash('Finding you…', 8000); LF.gps.start('button', use); }
   }
   if(a.a === 'save' && ready()){
+    if(!LF.account.require('drawings')) return;   // measuring is open to all; keeping it needs an account
     const d = kind === 'circle' ? { kind, center, radius } : { kind, points:pts.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]) };
     stop(true);
     LF.items.newDrawing(d);

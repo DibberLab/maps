@@ -172,3 +172,10 @@ a.btn{text-decoration:none;color:var(--ink)}
 .area-row .btn{min-height:36px;padding:5px 12px;font-size:14px}
 .linkbtn{border:0;background:none;padding:0;color:var(--blaze);font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
 .saved-note{margin-top:4px;padding:8px 10px;background:var(--panel-2);border-radius:6px}
+
+/* Accounts */
+.tool.account{border-bottom:1px solid var(--line);border-radius:6px 6px 0 0;margin-bottom:4px;padding-bottom:10px}
+.tool.account .ti{background:var(--blaze)}
+.tool.account .ti svg{stroke:var(--blaze-ink)}
+.tool.locked .small::before{content:'Approved account needed · ';color:var(--blaze);font-weight:600}
+.form-err{color:#c0392b;font-weight:600;min-height:1em;margin:8px 0 0}

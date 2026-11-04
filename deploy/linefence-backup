@@ -1,0 +1,12 @@
+#!/bin/sh
+# /etc/cron.daily/linefence-backup: a consistent copy of the accounts database,
+# keeping the last 14 days in /var/backups/linefence.
+set -e
+mkdir -p /var/backups/linefence
+/var/www/maps/.venv/bin/python - <<'PY'
+import sqlite3, time
+src = sqlite3.connect("/var/lib/linefence/linefence.db")
+dst = sqlite3.connect(time.strftime("/var/backups/linefence/linefence-%Y-%m-%d.db"))
+src.backup(dst); dst.close(); src.close()
+PY
+find /var/backups/linefence -name 'linefence-*.db' -mtime +14 -delete

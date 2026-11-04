@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Line Fence Admin</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1f2b24">
+<link rel="icon" href="../icons/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{--ink:#1f2b24;--panel:#f6f7f3;--panel-2:#e9ece4;--line:#c9cfc2;--muted:#5b665d;--blaze:#e8590c;--blaze-ink:#fff;--ok:#3f9d4a;--warn:#d9a21b;--bad:#9c4a2f;
+  --display:"Saira Condensed","Arial Narrow",sans-serif;--body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#e7ece3;--panel:#1a211c;--panel-2:#232c25;--line:#36423a;--muted:#9aa79c;color-scheme:dark}}
+:root[data-theme="dark"]{--ink:#e7ece3;--panel:#1a211c;--panel-2:#232c25;--line:#36423a;--muted:#9aa79c;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--panel);color:var(--ink);font:15px/1.45 var(--body)}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--blaze);outline-offset:2px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.brand{font:700 22px/1 var(--display);letter-spacing:.04em;text-transform:uppercase;background:var(--ink);color:var(--panel);padding:8px 12px 7px;border-radius:6px;text-decoration:none}
+.brand span{color:var(--blaze)}
+header h1{font:700 22px/1 var(--display);letter-spacing:.04em;text-transform:uppercase;margin:0;color:var(--muted)}
+header .me{margin-left:auto;font-size:13px;color:var(--muted)}
+main{max-width:960px;margin:0 auto;padding:16px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tabs button{border:1px solid var(--line);background:var(--panel-2);border-radius:99px;padding:6px 14px;cursor:pointer;font-weight:600}
+.tabs button.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.tabs .n{opacity:.7;font-weight:500;margin-left:4px}
+.card{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--panel)}
+.card .top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.card b{font-size:16px;overflow-wrap:anywhere}
+.meta{font-size:13px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.tag{display:inline-block;font:600 12px var(--body);letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:4px}
+.tag.pending{background:var(--warn);color:#2a1d00}.tag.approved{background:var(--ok);color:#fff}.tag.disabled{background:var(--bad);color:#fff}.tag.admin{background:var(--ink);color:var(--panel)}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.btn{min-height:38px;padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);font-weight:600;cursor:pointer}
+.btn.primary{background:var(--blaze);border-color:var(--blaze);color:var(--blaze-ink)}
+.btn.danger{color:#c0392b}
+.temp{margin-top:10px;padding:10px;background:var(--panel-2);border-radius:6px;font-size:14px}
+.temp code{font:600 17px ui-monospace,Menlo,Consolas,monospace;user-select:all}
+form{max-width:380px}
+label{display:block;font-size:13px;color:var(--muted);margin-top:10px}
+input{display:block;width:100%;margin-top:4px;padding:10px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);font-size:16px}
+.err{color:#c0392b;font-weight:600;min-height:1em}
+.empty{color:var(--muted);padding:20px 0}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="../">Line<span>·</span>Fence</a>
+  <h1>Accounts</h1>
+  <span class="me" id="me"></span>
+</header>
+<main id="main"><p class="empty">Loading…</p></main>
+<script src="admin.js"></script>
+</body>
+</html>

@@ -71,7 +71,9 @@ function closeSheet(){
 document.getElementById('closeSheet').addEventListener('click', closeSheet);
 LF.closeSheet = closeSheet;
 /* Buttons in the sheet carry data-act="…"; whoever filled the sheet handles them. */
-body.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if(el && sheetHandler) sheetHandler(el.dataset.act, el, e); });
+body.addEventListener('click', e => { const el = e.target.closest('[data-act]');
+  if(el && el.matches('input[type=checkbox], input[type=radio]')) return;   // switches and options act on 'change', once
+  if(el && sheetHandler) sheetHandler(el.dataset.act, el, e); });
 body.addEventListener('change', e => { const el = e.target.closest('[data-act]'); if(el && sheetHandler && el.matches('input,select')) sheetHandler(el.dataset.act, el, e); });
 /* Other features (saved items, lists) show their own content in the same sheet.
    opts.pin: the spot the Share button should send (or none). */

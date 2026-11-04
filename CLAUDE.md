@@ -22,6 +22,9 @@ site/                 the whole app: static files, no build step
                       backup/restore), LF.listen/LF.emit event bus. Loaded first.
   js/share.js         LF.share.parse/build for links: #map=z/lat/lng&pin=lat,lng&base=hyb&layers=a,b
   js/map.js           SRC block (every data service URL), base maps, layers, layers panel, LF.flash
+  js/select.js        LF.select (the selected thing drawn bold on 'selPane': cased outline, pulsing ring; cleared when
+                      the sheet changes) and LF.shading / LF.shadeSwitch() (Hide shading: public land and any path with a
+                      baseFill option lose their fill; pref 'noShade'). Loads right after map.js.
   js/identify.js      tap-to-identify: parallel lookups (15 s timeout each) and the results sheet
   js/search.js        address/coordinate search (Nominatim) and the GPS button
   js/geo.js           distance, acres, bearing, climb, US-unit formatting, GPX/KML export and import (pure; runs in Node)

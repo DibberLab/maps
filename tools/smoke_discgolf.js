@@ -12,6 +12,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   const page = await (await browser.newContext({ ...devices['Pixel 7'] })).newPage();
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await page.route('**/data/discgolf.json', r => r.fulfill({ body: FIX, contentType: 'application/json' }));
+  await page.addInitScript(() => { if(!sessionStorage.getItem('dg-set')){ localStorage.setItem('lf.discgolfOn', 'true'); sessionStorage.setItem('dg-set', '1'); } });   // the layer is off by default
   await page.goto(BASE + '#map=12/43.0348/-89.5045&layers=parcels');
   await page.waitForFunction(() => window.LF && LF.discgolf && LF.discgolf.data());
   check(await page.locator('.dg-pin').count() >= 1, 'course pins on the map');

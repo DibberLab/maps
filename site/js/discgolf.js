@@ -12,7 +12,9 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp
 const ft = m => Math.round(m / 0.3048).toLocaleString('en-US') + ' ft';
 const PIN_ZOOM = 7, LAYOUT_ZOOM = 15, ATTR = 'Disc golf: © OpenStreetMap contributors';
 const box = document.getElementById('l-discgolf'), note = document.getElementById('dgNote');
-let data = null, loading = null, on = LF.prefs.get('discgolf', true);
+/* Off unless you turn it on. Saved only when you tap it ('discgolfOn'); the old 'discgolf' key was
+   written for everyone on load, so it doesn't say what anyone chose and is ignored. */
+let data = null, loading = null, on = LF.prefs.get('discgolfOn', false);
 
 map.createPane('dgPane'); map.getPane('dgPane').style.zIndex = 445;
 map.createPane('dgMarkers'); map.getPane('dgMarkers').style.zIndex = 455;
@@ -38,7 +40,7 @@ function build(){
   view();
 }
 function show(v){
-  on = v; LF.prefs.set('discgolf', v); box.checked = v;
+  on = v; box.checked = v;
   if(v){ load(); view(); map.attributionControl.addAttribution(ATTR); }
   else { map.removeLayer(pins); map.removeLayer(layout); hi.clearLayers(); map.attributionControl.removeAttribution(ATTR); }
 }
@@ -136,7 +138,7 @@ function find(q){
   return hits.length ? hits.sort((a, b) => a.name.length - b.name.length)[0] : null;
 }
 
-box.addEventListener('change', () => show(box.checked));
+box.addEventListener('change', () => { LF.prefs.set('discgolfOn', box.checked); show(box.checked); });
 map.on('moveend zoomend', view);
 show(on);
 LF.discgolf = { find:q => { const c = find(q); if(c){ open(c); fit(bounds(c), 16); } return !!c; }, open, data:() => data, load };

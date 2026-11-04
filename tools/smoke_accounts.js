@@ -56,11 +56,29 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(/needs a Line Fence account/.test(await anon.textContent('#sheetBody')), 'keeping a drawing asks to sign in');
   await anon.click('#closeSheet'); await anon.click('#stripBtns [data-a=cancel]');
 
+  check(!(await anon.isChecked('#l-discgolf')) && await anon.locator('.dg-pin').count() === 0, 'disc golf layer is off by default');
+
   // 2. The listed admin email signs up approved.
   const admin = await device('admin');
   await signUp(admin, 'boss@example.com', 'correct horse', 'Boss');
   check(await admin.evaluate(() => LF.account.approved()), 'admin email is approved at sign-up');
   await dropWaypoint(admin, 'Boss stand', 200, 300);
+
+  // 2b. Layer settings follow the account: change them here, see them on a new device.
+  await admin.click('#layersBtn');
+  await admin.click('#l-discgolf'); await admin.click('#b-topo');
+  await admin.click('#layersBtn');
+  await admin.waitForTimeout(2500);   // saved a moment after the last change
+  const other = await device('admin-2');
+  await other.goto(BASE + '#map=14/45.86/-92.62');   // a plain address, not a link that sets layers
+  await signIn(other, 'boss@example.com', 'correct horse');
+  await other.waitForFunction(() => document.getElementById('l-discgolf').checked, null, { timeout:5000 }).catch(() => {});
+  check(await other.isChecked('#l-discgolf') && await other.isChecked('#b-topo'), 'layer settings saved to the account and applied on another device');
+  await other.reload(); await other.waitForFunction(() => window.LF && LF.account);
+  await other.waitForTimeout(800);
+  check(await other.isChecked('#l-discgolf') && await other.isChecked('#b-topo'), 'and they stay after a reload');
+  const fresh = await device('fresh');
+  check(!(await fresh.isChecked('#l-discgolf')) && await fresh.isChecked('#b-hyb'), 'a signed-out visitor still gets the defaults');
 
   // 3. A new user waits for approval.
   const hunter = await device('hunter');

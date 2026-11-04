@@ -52,6 +52,9 @@ site/                 the whole app: static files, no build step
   js/sync.js          approved accounts: local saves mark items pending (prefs 'syncPending'), pushed in ≤4 MB batches to
                       POST /api/sync; pulls GET /api/sync?since=<seq>. Newest `updated` wins. First sync on a device adds
                       its never-synced items to the account; sign-out clears the account's items from the device.
+  js/settings.js      signed-in accounts: the layers panel (base, close-up, every l-* switch) saved to POST /api/me/settings
+                      1.5 s after a change, applied on sign-in / app open (a shared link's own base/layers win at open).
+                      Disc golf is off by default; only a tap saves it ('lf.discgolfOn'; the old 'lf.discgolf' is ignored).
   admin/              admin portal (index.html + admin.js): approve, move back to waiting, turn off, make/remove admin,
                       reset password (shows a one-time temporary password), delete
   js/app.js           address bar sync, Share button, install-as-app, backup/restore, service worker

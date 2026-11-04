@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS items (
   PRIMARY KEY (user_id, store, id)
 );
 CREATE INDEX IF NOT EXISTS items_seq ON items (user_id, seq);
+CREATE TABLE IF NOT EXISTS settings (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  data TEXT NOT NULL,
+  updated INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS login_fails (key TEXT NOT NULL, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS login_fails_key ON login_fails (key, ts);
 """
@@ -276,6 +281,31 @@ def change_password():
         return err(problem)
     db().execute("UPDATE users SET pw = ? WHERE id = ?", (generate_password_hash(b["new"]), u["id"]))
     db().execute("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", (u["id"], hash_token(request.cookies.get(COOKIE, ""))))
+    db().commit()
+    return jsonify(ok=True)
+
+
+# ---------- Settings (map layers and base map, per account) ----------
+
+@app.get("/api/me/settings")
+@needs("user")
+def get_settings():
+    row = db().execute("SELECT data, updated FROM settings WHERE user_id = ?", (current_user()["id"],)).fetchone()
+    return jsonify(settings=json.loads(row["data"]) if row else None, updated=row["updated"] if row else None)
+
+
+@app.post("/api/me/settings")
+@needs("user")
+def put_settings():
+    st = body().get("settings")
+    if not isinstance(st, dict):
+        return err("Send settings as an object.")
+    data = json.dumps(st, separators=(",", ":"))
+    if len(data) > 8192:
+        return err("Settings are too large.")
+    db().execute("INSERT INTO settings (user_id, data, updated) VALUES (?, ?, ?) "
+                 "ON CONFLICT (user_id) DO UPDATE SET data = excluded.data, updated = excluded.updated",
+                 (current_user()["id"], data, now()))
     db().commit()
     return jsonify(ok=True)
 

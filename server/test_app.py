@@ -50,6 +50,12 @@ check(len(d["items"]) == 1 and d["items"][0]["deleted"], "deletes sync as tombst
 check(J(user, "post", "/api/sync", {"changes": [dict(wp, store="secrets")]}).json["accepted"] == 0, "unknown store ignored")
 check(admin.get("/api/sync").json["items"] == [], "accounts don't see each other's items")
 
+check(user.get("/api/me/settings").json["settings"] is None, "no saved settings yet")
+check(J(user, "post", "/api/me/settings", {"settings": {"base": "topo", "layers": {"l-discgolf": True}}}).status_code == 200, "save layer settings")
+check(user.get("/api/me/settings").json["settings"]["layers"]["l-discgolf"] is True, "settings come back")
+check(admin.get("/api/me/settings").json["settings"] is None, "settings are per account")
+check(stranger.get("/api/me/settings").status_code == 401, "signed-out visitors have no account settings")
+check(J(user, "post", "/api/me/settings", {"settings": {"x": "y" * 9000}}).status_code == 400, "oversized settings refused")
 temp = J(admin, "post", f"/api/admin/users/{hid}/reset", {}).json["password"]
 check(user.get("/api/me").json["user"] is None, "password reset signs the user out")
 check(J(user, "post", "/api/login", {"email": "hunter@example.com", "password": temp}).status_code == 200, "temporary password works")

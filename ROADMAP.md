@@ -59,7 +59,7 @@ Decided 2026-11-04: email + password sign-in; you approve accounts in an admin p
 
 ## Next
 
-- [ ] Disc golf courses layer from OpenStreetMap (not UDisc: its terms forbid scraping). Overpass wasn't reachable from the build workspace on 2026-11-04.
+- [x] Disc golf courses layer (MN + WI) from OpenStreetMap, with tees, baskets, hole lines, par and lengths where mapped. Rebuilt monthly by GitHub Actions (.github/workflows/discgolf.yml). Not UDisc: its terms forbid scraping.
 - Phase 4 and Phase 5 above.
 
 ## Not planned

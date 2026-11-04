@@ -9,6 +9,7 @@ const inspect = ll => LF.inspect(ll);
 document.getElementById('searchForm').addEventListener('submit', async ev=>{
   ev.preventDefault();
   const q = document.getElementById('q').value.trim(); if(!q) return;
+  if(!/\d/.test(q) && LF.discgolf && LF.prefs.get('discgolf', true)){ await LF.discgolf.load(); if(LF.discgolf.find(q)) return; }
   const m = q.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
   if(m){ const ll = L.latLng(+m[1], +m[2]); map.setView(ll, 16); inspect(ll); return; }
   try{

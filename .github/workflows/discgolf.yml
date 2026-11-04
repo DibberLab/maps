@@ -1,0 +1,59 @@
+# Refreshes site/data/discgolf.json (MN + WI disc golf courses, tees, baskets
+# and holes from OpenStreetMap) and deploys it. Runs monthly, by hand
+# (Actions -> Disc golf data -> Run workflow), and when the extract script changes.
+name: Disc golf data
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "41 8 3 * *"     # 3rd of each month, 08:41 UTC
+  push:
+    branches: [main, discgolf]      # discgolf: a trial run that commits to its own branch, no deploy
+    paths:
+      - tools/fetch_discgolf.py
+      - .github/workflows/discgolf.yml
+
+concurrency:
+  group: discgolf-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write      # commit the refreshed data file
+  actions: write       # start the Deploy workflow afterwards
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch from OpenStreetMap
+        run: |
+          mkdir -p site/data
+          python3 tools/fetch_discgolf.py site/data/discgolf.json
+
+      - name: Commit if changed
+        id: commit
+        run: |
+          # The file's timestamp changes every run; only commit when the courses did.
+          if git cat-file -e HEAD:site/data/discgolf.json 2>/dev/null; then
+            old=$(git show HEAD:site/data/discgolf.json | python3 -c "import json,sys; d=json.load(sys.stdin); d.pop('generated',None); print(json.dumps(d,sort_keys=True))")
+            new=$(python3 -c "import json; d=json.load(open('site/data/discgolf.json')); d.pop('generated',None); print(json.dumps(d,sort_keys=True))")
+            if [ "$old" = "$new" ]; then echo "No course changes."; echo "changed=no" >> "$GITHUB_OUTPUT"; exit 0; fi
+          fi
+          counts=$(python3 -c "import json; c=json.load(open('site/data/discgolf.json'))['counts']; print(f\"{c['courses']} courses, {c['with_holes']} with hole layouts\")")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data/discgolf.json
+          git commit -m "Disc golf data: $counts (OpenStreetMap)"
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+          echo "changed=yes" >> "$GITHUB_OUTPUT"
+
+      # Pushes made with the workflow token don't start other workflows, so start the deploy here.
+      - name: Deploy
+        if: steps.commit.outputs.changed == 'yes' && github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run Deploy --repo "$GITHUB_REPOSITORY" --ref main

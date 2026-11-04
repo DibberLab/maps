@@ -91,7 +91,7 @@ function open(c, holeRef){
     : '<p class="small">No hole layout mapped for this course yet.</p>';
   const body = '<div class="btnrow acts">' +
       `<button class="btn primary" data-act="zoom">Show course</button>` +
-      `<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${i.address ? encodeURIComponent(i.address) : c.c[0] + ',' + c.c[1]}" target="_blank" rel="noopener">Directions</a>` +
+      `<button class="btn" data-act="route">Directions</button>` +
       (web ? `<a class="btn" href="${esc(/^https?:/i.test(web) ? web : 'https://' + web)}" target="_blank" rel="noopener">Website</a>` : '') +
       /* UDisc: a direct link when we know the course page, otherwise a web search of udisc.com. */
       (c.udisc || /udisc\.com/i.test(web || '') ? `<a class="btn" href="${esc(c.udisc || web)}" target="_blank" rel="noopener">UDisc</a>`
@@ -107,6 +107,7 @@ function open(c, holeRef){
   LF.showSheet(`<h2>${esc(c.name)}</h2><div><span class="tag dg">Disc golf${c.n ? ' · ' + c.n + ' holes' : ''}</span></div><div class="small mono">${geo.fmtLL(c.c)}</div>`,
     body, { pin:c.c, onClose:() => hi.clearLayers(), onAct:(act, el) => {
       if(act === 'zoom') fit(bounds(c), 17);
+      if(act === 'route') LF.route.to(c.name, c.c);
       if(act === 'save' && LF.account.require('waypoints')) LF.items.newWaypoint(c.c, { name:c.name });
       if(act === 'hole'){ const h = holes.find(x => String(x.ref || '') === el.dataset.ref); if(h){ focus(h); el.parentNode.querySelectorAll('tr').forEach(r => r.classList.toggle('on', r === el)); } }
     } });
@@ -118,14 +119,7 @@ function focus(h, keepView){
   L.polyline(h.line, { pane:'dgPane', renderer, color:'#e8590c', weight:5, interactive:false }).addTo(hi);
   if(!keepView) fit(L.latLngBounds(h.line), 18);
 }
-/* Fit to what's visible: above the sheet on a phone, beside it on a desktop. */
-function fit(b, maxZoom){
-  const sh = document.getElementById('sheet'), m = map.getContainer().getBoundingClientRect();
-  let br = [30, 30], tl = [30, 80];
-  if(!sh.hidden){ const r = sh.getBoundingClientRect();
-    if(r.left <= 1 && r.width >= m.width - 2) br = [30, Math.max(30, m.bottom - r.top + 20)]; else tl = [r.right - m.left + 20, 80]; }
-  map.fitBounds(b, { maxZoom, paddingTopLeft:tl, paddingBottomRight:br });
-}
+const fit = (b, z) => LF.fitVisible(b, z);
 function bounds(c){
   const b = L.latLngBounds([c.c]);
   (c.outline || []).forEach(r => r.forEach(p => b.extend(p)));

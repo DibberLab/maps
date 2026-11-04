@@ -124,7 +124,7 @@ async function open(store, id, opts){
   const here = LF.gps.last ? [['From you', geo.fmtDist(geo.dist(LF.gps.last.ll, where(store, r))) + ' ' + geo.fmtBearing(geo.bearing(LF.gps.last.ll, where(store, r)))]] : [];
   const photos = (r.photos || []).map((p, i) => `<img class="photo" src="${p}" alt="Photo ${i+1}" data-act="photo">`).join('');
   const body = '<div class="btnrow acts">' +
-      (store !== 'drawings' || r.kind !== 'line' ? `<button class="btn primary" data-act="goto">${store === 'tracks' ? 'Back to start' : 'Go to'}</button>` : '') +
+      (store !== 'drawings' || r.kind !== 'line' ? `<button class="btn primary" data-act="route">Directions</button><button class="btn" data-act="goto">${store === 'tracks' ? 'Back to start' : 'Go to'}</button>` : '') +
       '<button class="btn" data-act="edit">Edit</button>' +
       '<button class="btn" data-act="lookup">Parcel here</button>' +
       '<button class="btn" data-act="gpx">Export</button>' +
@@ -135,6 +135,7 @@ async function open(store, id, opts){
     `<p class="note">Saved on this device ${r.updated ? new Date(r.updated).toLocaleDateString('en-US') : ''}. Back up from the layers panel to keep a copy.</p>`;
   LF.showSheet(head(store, r), body, { pin:where(store, r), onAct:(act, el) => {
     if(act === 'edit') edit(store, r);
+    if(act === 'route') LF.route.to(store === 'tracks' ? 'start of ' + (r.name || 'track') : r.name || KIND[r.kind] || 'waypoint', where(store, r));
     if(act === 'goto') goto(store === 'tracks' ? 'Start of ' + (r.name || 'track') : r.name || KIND[r.kind] || 'Waypoint', where(store, r));
     if(act === 'lookup'){ const p = where(store, r); LF.inspect(L.latLng(p[0], p[1])); }
     if(act === 'gpx') download(fileName(r.name || 'line-fence') + '.gpx', geo.toGPX({ [store]:[r] }), 'application/gpx+xml');
@@ -213,6 +214,7 @@ LF.items = {
   newWaypoint(ll, o){ edit('waypoints', { lat:+ll[0].toFixed(6), lng:+ll[1].toFixed(6), icon:'pin', name:(o && o.name) || '' }, true); },
   newDrawing(d){ edit('drawings', d, true); },
   newTrack(t){ edit('tracks', t, true); },
+  goto,
   editTrack(id){ db.get('tracks', id).then(t => t && edit('tracks', t, true)); },
   list
 };

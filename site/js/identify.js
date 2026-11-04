@@ -287,11 +287,12 @@ function render(ll, r, savedArea){
   if(savedArea) html = `<p class="note saved-note">From your offline copy of “${esc(savedArea.name)}”, saved ${new Date(savedArea.updated || savedArea.created).toLocaleDateString('en-US')}.` +
     ' <button class="linkbtn" data-act="live">Check live data</button></p>' + html;
   html = '<div class="btnrow acts"><button class="btn" data-act="save-wp">Save waypoint</button>' +
-    '<button class="btn" data-act="measure">Measure from here</button></div>' + html;
+    '<button class="btn" data-act="measure">Measure from here</button><button class="btn" data-act="route">Directions</button></div>' + html;
   sheetHandler = act => {
     if(act === 'save-wp' && LF.account.require('waypoints')) LF.items.newWaypoint([ll.lat, ll.lng], { name: unit ? unit.name : '' });
     if(act === 'measure') LF.draw.start('line', [ll.lat, ll.lng]);
     if(act === 'live') inspect(ll, { live:true });
+    if(act === 'route') LF.route.to(unit ? unit.name : parcel ? 'this parcel' : 'this spot', [ll.lat, ll.lng]);
     if(act === 'unit-zoom'){
       if(unitLayer) map.fitBounds(unitLayer.getBounds(), { padding:[30, 30] });
       else LF.flash('Still loading the boundary…', 2000);

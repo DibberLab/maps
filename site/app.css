@@ -194,3 +194,13 @@ table.holes td{padding:6px;border-bottom:1px solid var(--line)}
 table.holes tr[data-act]{cursor:pointer}
 table.holes tr.on td{background:var(--panel-2);font-weight:700;color:var(--blaze)}
 #map.dg-small .dg-pin{transform:scale(.5)}
+
+/* Directions */
+.chip.route{background:#0b3d91}
+.chip.route .txt{cursor:pointer}
+ol.steps{list-style:none;counter-reset:st;padding:0;margin:8px 0}
+ol.steps li{counter-increment:st;display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+ol.steps li::before{content:counter(st);flex:none;width:24px;height:24px;border-radius:50%;background:var(--panel-2);display:grid;place-items:center;font:600 12px var(--body)}
+ol.steps li span:first-of-type{flex:1}
+ol.steps li .small{white-space:nowrap}
+.modes .btn{min-width:72px}

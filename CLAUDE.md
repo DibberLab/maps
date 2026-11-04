@@ -36,6 +36,10 @@ site/                 the whole app: static files, no build step
                       public land record (with shapes) to LF.db 'areadata'; taps inside a saved area answer from it
                       (LF.offline.lookup, same shape as live results); parcel lines drawn from it; public land fills
                       only when navigator.onLine is false. Limit 6000 tiles per area. 'areas'/'areadata' are not backed up.
+  js/route.js         directions from GPS to a waypoint, track start, course or parcel: OSRM on routing.openstreetmap.de
+                      (FOSSGIS; car / bike / foot), one request per tap, credited; draws the route, the off-road last stretch
+                      as a dashed straight line, turn-by-turn steps, link to the same route on openstreetmap.org.
+                      Tests: cloud sandboxes can't reach the router from Chromium, so smoke_route.js fetches via curl.
   js/discgolf.js      disc golf layer: pins (zoom 7+), hole layouts (zoom 15+), course sheet, name search. Data in
                       data/discgolf.json, built by tools/fetch_discgolf.py (Overpass, MN + WI) in GitHub Actions monthly;
                       the build workspace can't reach Overpass. Test fixture: tools/fixtures/discgolf-elver.json.

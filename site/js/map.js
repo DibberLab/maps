@@ -156,13 +156,25 @@ Object.keys(layers).forEach(k => {
 if(fromLink.layers) prefs.set('layers', on);
 map.on('moveend zoomend', onView); onView();
 
+/* Fit bounds into the part of the map you can see: above the sheet on a phone,
+   beside it on a desktop, below the top bar. */
+LF.fitVisible = function(b, maxZoom){
+  const sh = document.getElementById('sheet'), m = map.getContainer().getBoundingClientRect();
+  let br = [30, 30], tl = [30, 80];
+  if(sh && !sh.hidden){ const r = sh.getBoundingClientRect();
+    if(r.left <= 1 && r.width >= m.width - 2) br = [30, Math.max(30, m.bottom - r.top + 20)]; else tl = [r.right - m.left + 20, 80]; }
+  map.fitBounds(b, { maxZoom, paddingTopLeft:tl, paddingBottomRight:br });
+};
+
 /* Short message in the chip under the top bar. */
 let flashTimer = null;
 LF.flash = function(msg, ms){
   clearTimeout(flashTimer);
   hint.textContent = msg; hint.hidden = false;
-  flashTimer = setTimeout(() => { hint.textContent = 'Zoom in to see property lines'; onView(); }, ms || 3500);
+  flashTimer = setTimeout(LF.unflash, ms || 3500);
 };
+/* End a message early (e.g. "Getting directions…" once they've arrived). */
+LF.unflash = function(){ clearTimeout(flashTimer); hint.textContent = 'Zoom in to see property lines'; onView(); };
 
 /* ---------- Layers panel ---------- */
 const lBtn = document.getElementById('layersBtn'), lPanel = document.getElementById('layersPanel');

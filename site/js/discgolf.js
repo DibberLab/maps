@@ -48,6 +48,7 @@ function view(){
   if(!on || !data) return;
   const z = map.getZoom();
   document.getElementById('map').classList.toggle('dg-labels', z >= 12);
+  document.getElementById('map').classList.toggle('dg-small', z < 10);   // statewide views: small dots, not piles of pins
   if(z >= PIN_ZOOM){ if(!map.hasLayer(pins)) pins.addTo(map); } else map.removeLayer(pins);
   layout.clearLayers();
   if(z < LAYOUT_ZOOM){ map.removeLayer(layout); return; }

@@ -139,6 +139,27 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(/→ North stand: .*(ft|mi) [NESW]/.test(await page.textContent('#gotoChip .txt')), 'Go to shows distance and direction: ' + await page.textContent('#gotoChip .txt'));
   await page.click('#gotoChip button');
 
+  // 6b. Hide on map: from the list's eye, kept after a reload, shown again from the item's sheet.
+  await tool('list');
+  await page.waitForSelector('#sheetBody .row-wrap');
+  await page.locator('.row-wrap', { hasText:'North stand' }).locator('.eye').click();
+  await page.waitForTimeout(400);
+  check(await page.locator('.leaflet-marker-icon .wp').count() === 0, 'eye button hides the waypoint from the map');
+  check(await page.locator('.row-wrap.off', { hasText:'North stand' }).count() === 1, 'list shows it as hidden');
+  check(await page.locator('[data-act=show-all]').count() === 1, 'Show all appears when something is hidden');
+  await page.reload();
+  await page.waitForFunction(() => window.LF && LF.items && LF.db);
+  await page.waitForTimeout(800);
+  check(await page.locator('.leaflet-marker-icon .wp').count() === 0, 'still hidden after a reload');
+  check(await page.evaluate(() => LF.db.all('waypoints').then(w => w[0].hidden === true && LF.sync.pendingCount() >= 0)), 'hidden is saved on the item (and syncs with it)');
+  await page.evaluate(() => LF.db.all('waypoints').then(w => LF.items.open('waypoints', w[0].id)));
+  await page.waitForSelector('#sheetBody [data-act=vis]');
+  check(/Show on map/.test(await page.textContent('#sheetBody [data-act=vis]')), 'item sheet offers Show on map');
+  await page.click('#sheetBody [data-act=vis]');
+  await page.waitForSelector('.leaflet-marker-icon .wp', { timeout:3000 }).catch(() => {});
+  check(await page.locator('.leaflet-marker-icon .wp').count() === 1, 'Show on map brings it back');
+  await page.click('#closeSheet');
+
   // 7. Saved list, GPX export, wipe, import.
   await tool('list');
   await page.waitForSelector('#sheetBody .row');

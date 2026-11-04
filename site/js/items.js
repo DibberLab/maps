@@ -85,7 +85,9 @@ function wpIcon(w){
 async function redraw(){
   if(!(await db.ready())) return;
   layer.clearLayers();
-  const [wps, drs, trs] = await Promise.all([db.all('waypoints'), db.all('drawings'), db.all('tracks')]);
+  // Items marked hidden (the eye in the list, or Hide on map) stay saved but aren't drawn.
+  const shown = r => !r.hidden;
+  const [wps, drs, trs] = await Promise.all([db.all('waypoints'), db.all('drawings'), db.all('tracks')]).then(a => a.map(x => x.filter(shown)));
   drs.forEach(d => {
     const c = d.color || '#e8590c', o = { pane:'savedPane', renderer:touchy, color:c, weight:3, opacity:.95 };
     if(d.kind === 'line') L.polyline(d.points, o).on('click', tap('drawings', d)).addTo(layer);
@@ -127,8 +129,10 @@ async function open(store, id, opts){
       (store !== 'drawings' || r.kind !== 'line' ? `<button class="btn primary" data-act="route">Directions</button><button class="btn" data-act="goto">${store === 'tracks' ? 'Back to start' : 'Go to'}</button>` : '') +
       '<button class="btn" data-act="edit">Edit</button>' +
       '<button class="btn" data-act="lookup">Parcel here</button>' +
+      `<button class="btn" data-act="vis">${r.hidden ? 'Show on map' : 'Hide on map'}</button>` +
       '<button class="btn" data-act="gpx">Export</button>' +
       '<button class="btn danger" data-act="delete">Delete</button></div>' +
+    (r.hidden ? '<p class="saved-note">Hidden on the map. It stays saved; tap Show on map to bring it back.</p>' : '') +
     '<div class="block">' + dl(stats(store, r).concat(here)) + '</div>' +
     (r.notes ? `<div class="block"><p class="notes">${esc(r.notes)}</p></div>` : '') +
     (photos ? `<div class="photos">${photos}</div>` : '') +
@@ -140,6 +144,7 @@ async function open(store, id, opts){
     if(act === 'lookup'){ const p = where(store, r); LF.inspect(L.latLng(p[0], p[1])); }
     if(act === 'gpx') download(fileName(r.name || 'line-fence') + '.gpx', geo.toGPX({ [store]:[r] }), 'application/gpx+xml');
     if(act === 'photo') el.classList.toggle('big');
+    if(act === 'vis') setHidden(store, r.id, !r.hidden).then(() => { open(store, r.id); flash(r.hidden ? 'Showing on the map' : 'Hidden on the map; still saved', 2500); });
     if(act === 'delete' && confirm('Delete "' + (r.name || KIND[store === 'tracks' ? 'tracks' : r.kind || 'waypoints']) + '"? This cannot be undone.')){
       db.del(store, r.id).then(() => { LF.closeSheet(); flash('Deleted'); });
     }
@@ -241,16 +246,30 @@ gotoChip.querySelector('button').addEventListener('click', stopGoto);
 LF.listen('gps', updateGoto);
 LF.listen('gpsError', stopGoto);
 
+/* ---------- Hide on map ----------
+   Saved on the item itself, so it sticks across reloads and syncs to your other devices. */
+const EYE = ['<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+             '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'];
+async function setHidden(store, id, hidden){
+  const r = await db.get(store, id); if(!r) return;
+  if(hidden) r.hidden = true; else delete r.hidden;
+  await db.put(store, r);
+}
+
 /* ---------- List, export, import ---------- */
 async function list(){
   if(!(await db.ready())){ flash('This browser is blocking on-device storage.', 5000); return; }
   const [wps, drs, trs] = await Promise.all([db.all('waypoints'), db.all('drawings'), db.all('tracks')]);
   const byNew = (a, b) => (b.updated || 0) - (a.updated || 0);
-  const row = (store, r, icon, meta) => `<button class="row" data-act="open" data-s="${store}" data-id="${esc(r.id)}">${icon}<span><b>${esc(r.name || 'Untitled')}</b><span class="small">${esc(meta)}</span></span></button>`;
+  const row = (store, r, icon, meta) => `<div class="row-wrap${r.hidden ? ' off' : ''}">` +
+    `<button class="row" data-act="open" data-s="${store}" data-id="${esc(r.id)}">${icon}<span><b>${esc(r.name || 'Untitled')}</b><span class="small">${esc(meta)}${r.hidden ? ' · hidden' : ''}</span></span></button>` +
+    `<button class="eye" data-act="vis" data-s="${store}" data-id="${esc(r.id)}" aria-pressed="${!r.hidden}" title="${r.hidden ? 'Show on map' : 'Hide on map'}" aria-label="${r.hidden ? 'Show' : 'Hide'} ${esc(r.name || 'item')} on map">${EYE[r.hidden ? 1 : 0]}</button></div>`;
   const me = LF.gps.last && LF.gps.last.ll;
   const sec = (title, rows) => rows.length ? `<div class="block"><h3>${title} (${rows.length})</h3><div class="rows">${rows.join('')}</div></div>` : '';
   const done = trs.filter(t => !t.recording);
+  const anyHidden = wps.concat(drs, done).some(r => r.hidden);
   const body = '<div class="btnrow acts"><button class="btn" data-act="gpx-all">Export GPX</button><button class="btn" data-act="kml-all">Export KML</button>' +
+      (anyHidden ? '<button class="btn" data-act="show-all">Show all on map</button>' : '') +
       '<label class="btn">Import GPX/KML<input type="file" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml,text/xml,application/xml" hidden data-act="import"></label></div>' +
     (wps.length + drs.length + done.length ? '' : '<p class="loading">Nothing saved yet. Use the + button to drop a waypoint, draw, or record a track.</p>') +
     sec('Waypoints', wps.sort(byNew).map(w => row('waypoints', w, `<span class="wp inline" style="background:${wpColor(w)};color:${inkOn(wpColor(w))}">${glyph(w.icon, 16)}</span>`,
@@ -259,6 +278,25 @@ async function list(){
     sec('Tracks', done.sort(byNew).map(t => row('tracks', t, `<span class="swatch-sm" style="background:${t.color || '#d62828'}"></span>`, stats('tracks', t).slice(0, 2).map(s => s[1]).join(' · '))));
   LF.showSheet('<h2>Saved on this device</h2>', body, { onAct: async (act, el) => {
     if(act === 'open') open(el.dataset.s, el.dataset.id, { fly:true });
+    if(act === 'vis'){
+      // Flip in place so the list keeps its scroll position.
+      const rec = await db.get(el.dataset.s, el.dataset.id); if(!rec) return;
+      const hide = !rec.hidden;
+      await setHidden(el.dataset.s, rec.id, hide);
+      const wrap = el.closest('.row-wrap'), meta = wrap.querySelector('.small');
+      wrap.classList.toggle('off', hide); el.setAttribute('aria-pressed', String(!hide)); el.innerHTML = EYE[hide ? 1 : 0];
+      el.title = hide ? 'Show on map' : 'Hide on map';
+      meta.textContent = meta.textContent.replace(/ · hidden$/, '') + (hide ? ' · hidden' : '');
+      // Keep "Show all on map" in step with whether anything is still hidden.
+      const acts = LF.sheetBody.querySelector('.acts'), btn = acts.querySelector('[data-act=show-all]');
+      const some = LF.sheetBody.querySelector('.row-wrap.off');
+      if(some && !btn) acts.insertAdjacentHTML('beforeend', '<button class="btn" data-act="show-all">Show all on map</button>');
+      if(!some && btn) btn.remove();
+    }
+    if(act === 'show-all'){
+      for(const [st, arr] of [['waypoints', wps], ['drawings', drs], ['tracks', done]]) for(const r of arr) if(r.hidden) await setHidden(st, r.id, false);
+      list(); flash('Everything is showing on the map');
+    }
     const all = { waypoints:wps, drawings:drs, tracks:done };
     const stamp = new Date().toISOString().slice(0, 10);
     if(act === 'gpx-all') download('line-fence-' + stamp + '.gpx', geo.toGPX(all), 'application/gpx+xml');

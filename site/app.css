@@ -204,3 +204,11 @@ ol.steps li::before{content:counter(st);flex:none;width:24px;height:24px;border-
 ol.steps li span:first-of-type{flex:1}
 ol.steps li .small{white-space:nowrap}
 .modes .btn{min-width:72px}
+
+/* Hide on map */
+.row-wrap{display:flex;align-items:stretch;border-bottom:1px solid var(--line)}
+.row-wrap .row{border-bottom:0;flex:1;min-width:0}
+.row-wrap .eye{flex:none;width:48px;border:0;background:transparent;color:var(--ink);cursor:pointer;display:grid;place-items:center;border-radius:6px}
+.row-wrap .eye:hover{background:var(--panel-2)}
+.row-wrap.off .row{opacity:.5}
+.row-wrap.off .eye{color:var(--muted)}

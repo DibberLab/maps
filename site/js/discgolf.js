@@ -93,6 +93,9 @@ function open(c, holeRef){
       `<button class="btn primary" data-act="zoom">Show course</button>` +
       `<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${i.address ? encodeURIComponent(i.address) : c.c[0] + ',' + c.c[1]}" target="_blank" rel="noopener">Directions</a>` +
       (web ? `<a class="btn" href="${esc(/^https?:/i.test(web) ? web : 'https://' + web)}" target="_blank" rel="noopener">Website</a>` : '') +
+      /* UDisc: a direct link when we know the course page, otherwise a web search of udisc.com. */
+      (c.udisc || /udisc\.com/i.test(web || '') ? `<a class="btn" href="${esc(c.udisc || web)}" target="_blank" rel="noopener">UDisc</a>`
+        : `<a class="btn" href="https://duckduckgo.com/?q=${encodeURIComponent('site:udisc.com/courses ' + c.name.replace(/^Disc golf at /, '') + (/disc golf/i.test(c.name) ? '' : ' disc golf'))}" target="_blank" rel="noopener">Find on UDisc</a>`) +
       '<button class="btn" data-act="save">Save waypoint</button></div>' +
     (rows.length ? '<div class="block"><dl>' + rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl></div>' : '') +
     (i.description ? `<div class="block"><p class="notes">${esc(i.description)}</p></div>` : '') + table +

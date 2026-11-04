@@ -44,6 +44,13 @@ site/                 the whole app: static files, no build step
                       (layer 26, filtered to "Town of"/"Township of", zoom 11), unincorporated places (geonames layer 3),
                       drawn client-side (USGS's own images fill cities solid white); road names (transportation labels,
                       one dynamic image per view) over the close-up imagery at zoom 17+. Toggles under Labels.
+                      onX-style tiers: cities by population (CITY_TIERS: 100k z6, 20k z8, 5k z9, 1k z10, rest z11; the query's
+                      where clause follows the zoom), short name until z12 then the official one; lake names (USGS NHD
+                      waterbody layer 12, GNIS_NAME + AREASQKM, LAKE_TIERS by area) and hamlets only where the base picture
+                      has none (Aerial only, or z17+ close-up) so names aren't doubled; declutter() hides the lower-ranked
+                      of two overlapping names (rank, then population/area).
+      js/menu.js      the main menu from the logo: account, content by type and folder (LF.items.list({type|folder})),
+                      offline areas, layers, admin portal.
   js/route.js         directions from GPS to a waypoint, track start, course or parcel: OSRM on routing.openstreetmap.de
                       (FOSSGIS; car / bike / foot), one request per tap, credited; draws the route, the off-road last stretch
                       as a dashed straight line, turn-by-turn steps, link to the same route on openstreetmap.org.

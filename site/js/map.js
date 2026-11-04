@@ -51,15 +51,19 @@ const ExportTiles = L.TileLayer.extend({
   initialize(url, extra, opts){ this._svc = url; this._extra = extra || ''; L.TileLayer.prototype.initialize.call(this, '', opts); },
   /* z, x, y in the usual 256-px tile scheme: a 512-px tile at map zoom Z covers one zoom Z-1 tile. */
   urlFor(c){
-    const span = 2 * MERC / Math.pow(2, c.z), x0 = -MERC + c.x * span, y1 = MERC - c.y * span;
-    const b = [x0, y1 - span, x0 + span, y1].map(v => v.toFixed(2)).join(',');
-    return `${this._svc}/exportImage?bbox=${b}&bboxSR=3857&imageSR=3857&size=512,512&format=jpgpng&f=image${this._extra}`;
+    // Ask for one extra pixel on every side: image servers leave a light edge pixel, and the
+    // tile is drawn shifted out by that pixel so the edges sit under the neighbours.
+    const span = 2 * MERC / Math.pow(2, c.z), px = span / 512, x0 = -MERC + c.x * span, y1 = MERC - c.y * span;
+    const b = [x0 - px, y1 - span - px, x0 + span + px, y1 + px].map(v => v.toFixed(2)).join(',');
+    return `${this._svc}/exportImage?bbox=${b}&bboxSR=3857&imageSR=3857&size=514,514&format=jpgpng&f=image${this._extra}`;
   },
   getTileUrl(c){ return this.urlFor({ x:c.x, y:c.y, z:c.z + this.options.zoomOffset }); },
-  /* Overlap neighbours by a pixel: phones with fractional pixel ratios otherwise show hairline seams. */
-  _initTile(tile){ L.TileLayer.prototype._initTile.call(this, tile); const s = this.getTileSize(); tile.style.width = (s.x + 1) + 'px'; tile.style.height = (s.y + 1) + 'px'; }
+  /* Draw the 514 px image over its 512 px slot, one pixel out on each side, so neighbours overlap
+     (hides edge pixels and the hairline gaps phones with fractional pixel ratios show). */
+  _initTile(tile){ L.TileLayer.prototype._initTile.call(this, tile); const s = this.getTileSize();
+    tile.style.width = (s.x + 2) + 'px'; tile.style.height = (s.y + 2) + 'px'; tile.style.marginLeft = tile.style.marginTop = '-1px'; }
 });
-const HD = { tileSize:512, zoomOffset:-1, minZoom:17, maxZoom:20, maxNativeZoom:20, keepBuffer:1, crossOrigin:true };
+const HD = { tileSize:512, zoomOffset:-1, minZoom:17, maxZoom:20, maxNativeZoom:20, keepBuffer:1, crossOrigin:true, className:'hd-tile' };
 const WI_BOUNDS = L.latLngBounds([42.4, -92.95], [47.4, -86.2]);
 const closeup = LF.closeup = {
   naip: new ExportTiles('https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer', '&bandIds=0,1,2',

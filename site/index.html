@@ -78,6 +78,9 @@
   <label class="opt"><input type="radio" name="closeup" value="leafoff" checked> Leaf-off spring (Wisconsin), summer elsewhere</label>
   <label class="opt"><input type="radio" name="closeup" value="summer"> Summer (USGS NAIP)</label>
   <label class="opt"><input type="radio" name="closeup" value="off"> Off (faster)</label>
+  <h3>Labels</h3>
+  <label class="opt"><input type="checkbox" id="l-places" checked><span class="sw" style="border:2px dashed #fff;background:#555"></span> City, village &amp; town limits and names</label>
+  <label class="opt"><input type="checkbox" id="l-roadnames" checked><span class="sw" style="background:#555;color:#fff;font:700 9px/12px var(--body);text-align:center">Rd</span> Road names on close-up aerial</label>
   <h3>Private land</h3>
   <label class="opt"><input type="checkbox" id="l-parcels" checked><span class="sw" style="border:2px solid var(--parcel);background:transparent"></span> Property lines &amp; owners</label>
   <label class="opt"><input type="checkbox" id="l-mncov" checked><span class="sw" style="background:repeating-linear-gradient(45deg,#777 0 3px,transparent 3px 6px)"></span> MN counties without free data</label>
@@ -135,6 +138,7 @@
 <script src="js/draw.js"></script>
 <script src="js/track.js"></script>
 <script src="js/offline.js"></script>
+<script src="js/labels.js"></script>
 <script src="js/route.js"></script>
 <script src="js/discgolf.js"></script>
 <script src="js/account.js"></script>

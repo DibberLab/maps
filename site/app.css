@@ -212,3 +212,18 @@ ol.steps li .small{white-space:nowrap}
 .row-wrap .eye:hover{background:var(--panel-2)}
 .row-wrap.off .row{opacity:.5}
 .row-wrap.off .eye{color:var(--muted)}
+
+/* City, town and place labels */
+.place-label{background:none;border:0;pointer-events:none}
+.place-label span{display:inline-block;transform:translate(-50%,-50%);white-space:nowrap;color:#fff;font:600 13px var(--body);letter-spacing:.02em;
+  text-shadow:0 0 3px #000,0 0 3px #000,0 0 6px rgba(0,0,0,.6)}
+.place-label.city.big span{font:700 16px var(--display);letter-spacing:.06em;text-transform:uppercase}
+.place-label.city span{font-weight:700}
+.place-label.town span{font:italic 500 12px var(--body);opacity:.9}
+.place-label.hamlet span{transform:translate(-4px,-50%);font-size:12px}
+.place-label.hamlet i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px #000;margin-right:5px;vertical-align:1px}
+.place-label.dup{display:none}
+
+/* Close-up tiles overlap their neighbours by a pixel (see ExportTiles in map.js). Leaflet's own seam fix,
+   mix-blend-mode: plus-lighter, would add the overlapping pixels together into white lines. */
+.leaflet-container .hd-tile img.leaflet-tile,.leaflet-container img.leaflet-tile.hd-tile{mix-blend-mode:normal}

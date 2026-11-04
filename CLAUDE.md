@@ -36,6 +36,10 @@ site/                 the whole app: static files, no build step
                       public land record (with shapes) to LF.db 'areadata'; taps inside a saved area answer from it
                       (LF.offline.lookup, same shape as live results); parcel lines drawn from it; public land fills
                       only when navigator.onLine is false. Limit 6000 tiles per area. 'areas'/'areadata' are not backed up.
+  js/labels.js        city/village limits + names (USGS govunits layer 24, from zoom 9), WI towns / MN townships
+                      (layer 26, filtered to "Town of"/"Township of", zoom 11), unincorporated places (geonames layer 3),
+                      drawn client-side (USGS's own images fill cities solid white); road names (transportation labels,
+                      one dynamic image per view) over the close-up imagery at zoom 17+. Toggles under Labels.
   js/route.js         directions from GPS to a waypoint, track start, course or parcel: OSRM on routing.openstreetmap.de
                       (FOSSGIS; car / bike / foot), one request per tap, credited; draws the route, the off-road last stretch
                       as a dashed straight line, turn-by-turn steps, link to the same route on openstreetmap.org.

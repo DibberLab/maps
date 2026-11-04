@@ -97,6 +97,21 @@ file.addEventListener('change', async () => {
   }catch(e){ flash(e instanceof SyntaxError ? 'That file is not a Line Fence backup.' : (e.message || 'Restore failed'), 5000); }
 });
 
+/* ---------- + button: tools menu ---------- */
+const tBtn = document.getElementById('toolsBtn'), tPanel = document.getElementById('toolsPanel');
+function tools(open){ tPanel.hidden = !open; tBtn.classList.toggle('on', open); tBtn.setAttribute('aria-expanded', String(open)); if(open) LF.closePanel(); }
+LF.closeTools = () => tools(false);
+tBtn.addEventListener('click', () => { if(LF.draw.active()) LF.draw.stop(); tools(tPanel.hidden); });
+document.getElementById('layersBtn').addEventListener('click', () => tools(false));
+map.on('click', () => { if(!tPanel.hidden) tools(false); });
+tPanel.addEventListener('click', e => {
+  const b = e.target.closest('[data-tool]'); if(!b) return;
+  const t = b.dataset.tool; tools(false);
+  if(t === 'track'){ if(LF.track.recording()) flash('Already recording. Use Stop at the top.'); else LF.track.start(); }
+  else if(t === 'list') LF.items.list();
+  else LF.draw.start(t);
+});
+
 /* ---------- Offline app shell ---------- */
 if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')){
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker not registered', e)));

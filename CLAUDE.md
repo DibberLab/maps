@@ -24,6 +24,14 @@ site/                 the whole app: static files, no build step
   js/map.js           SRC block (every data service URL), base maps, layers, layers panel, LF.flash
   js/identify.js      tap-to-identify: parallel lookups (15 s timeout each) and the results sheet
   js/search.js        address/coordinate search (Nominatim) and the GPS button
+  js/geo.js           distance, acres, bearing, climb, US-unit formatting, GPX/KML export and import (pure; runs in Node)
+  js/gps.js           one shared GPS watch (LF.gps.start/stop by user name: 'button', 'track', 'goto'); emits 'gps'.
+                      Only a permission denial stops it; signal dropouts just flash "Weak GPS signal".
+  js/items.js         saved waypoints/drawings/tracks: map rendering, view and edit sheets, photos (1280 px JPEG data URLs),
+                      Go to guide, the saved list, GPX/KML export and import
+  js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
+  js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
+                      an unfinished track comes back paused after a reload
   js/app.js           address bar sync, Share button, install-as-app, backup/restore, service worker
   sw.js               service worker: app files network-first (4 s) with cache fallback, fonts cache-first.
                       Map data is NOT cached (offline areas are Phase 3). Bump VERSION when its file list changes.
@@ -48,6 +56,8 @@ Test (needs the server above running; Chromium and Playwright are preinstalled i
 
 ```
 node tools/smoke.js http://localhost:8765/ /tmp/out
+node tools/smoke_tools.js http://localhost:8765/ /tmp/out   # Phase 2 tools, simulated GPS
+node tools/test_geo.js                                       # math and formats
 ```
 
 It opens a shared link to a Siren, WI parcel, checks the address bar, Share, backup/restore,

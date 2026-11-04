@@ -4,12 +4,13 @@
    the network is slow or gone. Map data from the state and federal services
    is not cached here; offline areas come in a later phase.
    Bump VERSION when the SHELL list changes. */
-const VERSION = 'lf-shell-1';
+const VERSION = 'lf-shell-2';
 const FONTS = 'lf-fonts-1';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.json',
   'vendor/leaflet-1.9.4.css', 'vendor/leaflet-1.9.4.js', 'vendor/esri-leaflet-3.0.12.js',
-  'js/store.js', 'js/share.js', 'js/map.js', 'js/identify.js', 'js/search.js', 'js/app.js',
+  'js/store.js', 'js/share.js', 'js/geo.js', 'js/map.js', 'js/identify.js', 'js/search.js',
+  'js/gps.js', 'js/items.js', 'js/draw.js', 'js/track.js', 'js/app.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
 const NETWORK_WAIT_MS = 4000;

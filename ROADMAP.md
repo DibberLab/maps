@@ -20,12 +20,12 @@ Everything later needs this. Also fixed: four dead data sources and lookups that
 - [x] **Hybrid base map:** USGS imagery with road and place labels on top, made the default.
 - [x] Device storage module (IndexedDB) with backup/restore, for Phases 2 to 4.
 
-## Phase 2: Field tools
+## Phase 2: Field tools (done)
 
-- [ ] **Waypoints:** drop pins with icons (stand, blind, trail cam, scrape, rub, parking, gate, custom), name, notes and photos. List view; tap to fly there; navigate-to with distance and bearing.
-- [ ] **Measure and draw:** lines with distance; **area drawings** (polygons and circles) with acreage; colors and labels.
-- [ ] **Track recording:** record a walk with distance, time, pace and elevation gain; keeps recording with the screen locked where the browser allows it (Wake Lock); "follow back" view.
-- [ ] Export and import GPX/KML so waypoints and tracks move to and from other apps and GPS units.
+- [x] **Waypoints:** drop pins with icons (stand, blind, trail cam, scrape, rub, parking, gate, custom), name, notes and photos. List view; tap to fly there; navigate-to with distance and bearing.
+- [x] **Measure and draw:** lines with distance; **area drawings** (polygons and circles) with acreage; colors and labels.
+- [x] **Track recording:** record a walk with distance, time, pace and elevation gain; keeps recording with the screen locked where the browser allows it (Wake Lock); "Back to start" guide. Not yet: dragging the corners of a saved drawing to reshape it.
+- [x] Export and import GPX/KML so waypoints and tracks move to and from other apps and GPS units.
 
 ## Phase 3: Offline maps
 

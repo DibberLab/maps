@@ -33,7 +33,30 @@
   </button>
 </div>
 
-<div class="chip" id="zoomHint">Zoom in to see property lines</div>
+<div class="chips">
+  <div class="chip" id="zoomHint">Zoom in to see property lines</div>
+  <div class="chip live rec" id="recChip" hidden><span class="txt">●</span><button type="button" data-a="pause">Pause</button><button type="button" data-a="stop">Stop</button></div>
+  <div class="chip live" id="gotoChip" hidden><span class="txt">→</span><button type="button" aria-label="Stop guiding">✕</button></div>
+</div>
+
+<button class="iconbtn fab fab2" id="toolsBtn" aria-label="Add and measure" aria-expanded="false" title="Waypoints, drawing and tracks">
+  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<div class="layers tools" id="toolsPanel" hidden>
+  <h3>Add</h3>
+  <button class="tool" data-tool="waypoint"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2"/></svg></span>Waypoint<span class="small">tap the map or use GPS</span></button>
+  <button class="tool" data-tool="track"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/></svg></span>Record a track<span class="small">time, distance, pace, climb</span></button>
+  <h3>Measure &amp; draw</h3>
+  <button class="tool" data-tool="line"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 18 10 8l5 6 5-9"/></svg></span>Line<span class="small">distance</span></button>
+  <button class="tool" data-tool="area"><span class="ti"><svg viewBox="0 0 24 24"><path d="M5 6 18 4l2 13-12 3z"/></svg></span>Area<span class="small">acres</span></button>
+  <button class="tool" data-tool="circle"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 12h8"/></svg></span>Circle<span class="small">radius &amp; acres</span></button>
+  <h3>Saved</h3>
+  <button class="tool" data-tool="list"><span class="ti"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></span>My waypoints, tracks &amp; drawings<span class="small">list, export, import GPX/KML</span></button>
+  <p class="small">Tracks record while Line Fence is open. Phones pause location for web apps when the screen is off, so the screen stays on while recording.</p>
+</div>
+
+<div class="strip" id="strip" hidden><div id="stripText"></div><div class="btnrow" id="stripBtns"></div></div>
 
 <button class="iconbtn fab" id="layersBtn" aria-label="Layers" aria-expanded="false">
   <svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/></svg>
@@ -63,6 +86,7 @@
   </div>
 
   <h3>Your data</h3>
+  <label class="opt"><input type="checkbox" id="l-saved" checked><span class="sw" style="background:var(--blaze)"></span> My waypoints, tracks &amp; drawings</label>
   <p class="small" id="dataNote">Settings and saved items stay on this device.</p>
   <div class="btnrow">
     <button class="btn" id="backupBtn" type="button">Back up</button>
@@ -89,9 +113,14 @@
 <script src="vendor/esri-leaflet-3.0.12.js"></script>
 <script src="js/store.js"></script>
 <script src="js/share.js"></script>
+<script src="js/geo.js"></script>
 <script src="js/map.js"></script>
 <script src="js/identify.js"></script>
 <script src="js/search.js"></script>
+<script src="js/gps.js"></script>
+<script src="js/items.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/track.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

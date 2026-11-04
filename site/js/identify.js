@@ -59,20 +59,45 @@ function wiClass(v){ if(!has(v)) return null;
 
 /* ---------- Results sheet ---------- */
 const sheet = document.getElementById('sheet'), head = document.getElementById('sheetHead'), body = document.getElementById('sheetBody');
-function closeSheet(){ sheet.hidden = true; hi.clearLayers(); pin.remove(); LF.pinLL = null; LF.emit('pin'); }
+let sheetHandler = null, sheetOnClose = null;
+function closeSheet(){
+  sheet.hidden = true; hi.clearLayers(); pin.remove(); clickSeq++;
+  const f = sheetOnClose; sheetHandler = sheetOnClose = null; if(f) f();
+  LF.pinLL = null; LF.emit('pin');
+}
 document.getElementById('closeSheet').addEventListener('click', closeSheet);
 LF.closeSheet = closeSheet;
+/* Buttons in the sheet carry data-act="…"; whoever filled the sheet handles them. */
+body.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if(el && sheetHandler) sheetHandler(el.dataset.act, el, e); });
+body.addEventListener('change', e => { const el = e.target.closest('[data-act]'); if(el && sheetHandler && el.matches('input,select')) sheetHandler(el.dataset.act, el, e); });
+/* Other features (saved items, lists) show their own content in the same sheet.
+   opts.pin: the spot the Share button should send (or none). */
+LF.showSheet = function(headHTML, bodyHTML, opts){
+  opts = opts || {};
+  const prev = sheetOnClose; sheetOnClose = null; if(prev) prev();
+  clickSeq++; hi.clearLayers(); pin.remove();
+  head.innerHTML = headHTML; body.innerHTML = bodyHTML;
+  sheetHandler = opts.onAct || null; sheetOnClose = opts.onClose || null;
+  sheet.hidden = false; sheet.scrollTop = 0;
+  document.getElementById('shareBtn').hidden = !opts.pin;
+  LF.pinLL = opts.pin ? L.latLng(opts.pin[0], opts.pin[1]) : null; LF.emit('pin');
+};
+LF.sheetBody = body;
 const hi = L.featureGroup().addTo(map);
 const pin = L.circleMarker([0,0],{ pane:'hiPane', radius:6, color:'#fff', weight:2, fillColor:css('--blaze'), fillOpacity:1 });
 
 let clickSeq = 0;
-map.on('click', e => inspect(e.latlng));
+/* LF.mode is set while drawing or placing something; taps then belong to that tool. */
+map.on('click', e => { if(!LF.mode) inspect(e.latlng); });
 
 LF.inspect = inspect;
 async function inspect(ll){
   const seq = ++clickSeq;
+  const prev = sheetOnClose; sheetOnClose = null; if(prev) prev();
+  sheetHandler = null;
   hi.clearLayers(); pin.setLatLng(ll).addTo(map);
   LF.pinLL = ll; LF.emit('pin');
+  document.getElementById('shareBtn').hidden = false;
   sheet.hidden = false;
   head.innerHTML = `<h2>Looking up…</h2><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
   body.innerHTML = '<div class="loading">Checking parcel and public land records</div>';
@@ -170,6 +195,12 @@ function render(ll, r){
   if(access) tags += `<span class="tag ${access[0]}">${esc(access[1])}</span>`;
   if(!parcel && pad[0]) title = pad[0].properties.Unit_Nm || pad[0].properties.Mang_Name || 'Public land';
   head.innerHTML = `<h2>${esc(title)}</h2><div>${tags}</div><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
+  html = '<div class="btnrow acts"><button class="btn" data-act="save-wp">Save waypoint</button>' +
+    '<button class="btn" data-act="measure">Measure from here</button></div>' + html;
+  sheetHandler = act => {
+    if(act === 'save-wp') LF.items.newWaypoint([ll.lat, ll.lng], { name: parcel || !pad[0] ? '' : title });
+    if(act === 'measure') LF.draw.start('line', [ll.lat, ll.lng]);
+  };
   html += '<p class="note">For reference only, not a survey. Boundaries can be off by many feet. Signs and posted boundaries on the ground override this map, and special hunting rules may apply. Confirm with the county or DNR before you go.</p>';
   body.innerHTML = html;
 }

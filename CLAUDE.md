@@ -4,6 +4,14 @@ Free, phone-friendly map of property lines, owners and public land for Wisconsin
 
 There is no app server, database, build step or API key. The browser pulls all map data straight from state and federal ArcGIS services. Settings (base map, layers on or off, last view) are saved per browser in `localStorage` under `lf.*` keys.
 
+## Working rules
+
+- **Pushing to `main` deploys to production** (GitHub Actions → `/usr/local/bin/maps-deploy` on the droplet, about 15 s).
+- Do all work on a branch. When a change is ready and tested (`tools/smoke.js` passes), **ask Andrew whether to deploy**. Only on a yes, fast-forward `main` to the branch and push.
+- After the push, check the Deploy run passed (`https://api.github.com/repos/DibberLab/maps/actions/runs?per_page=1`), then rerun `node tools/smoke.js https://maps.dibberlab.me/`.
+- A redeploy without new code: GitHub → Actions → Deploy → Run workflow, or `gh workflow run Deploy -R DibberLab/maps` on the Mac.
+- Andrew isn't a developer; give him exact commands to paste when something must run on his Mac.
+
 ## Layout
 
 ```

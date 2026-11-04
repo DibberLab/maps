@@ -180,7 +180,10 @@ def build(data):
         if t.get("name"):
             h["name"] = t["name"]
         c = owner(line[0]) or owner(line[-1])
-        (c["holes"] if c else orphans).append(("hole", h, line[0]))
+        if c:
+            c["holes"].append(h)
+        else:
+            orphans.append(("hole", h, line[0]))
     # Tees and baskets
     for n in nodes.values():
         kind = n.get("tags", {}).get("disc_golf")
@@ -227,8 +230,7 @@ def build(data):
     result = []
     for c in out:
         e, t = c["el"], c["el"].get("tags", {})
-        holes = sorted(c["holes"], key=lambda h: (h[1]["ref"] is None, h[1]["ref"] or 0))
-        hs = [h[1] for h in holes]
+        hs = sorted(c["holes"], key=lambda h: (h["ref"] is None, h["ref"] or 0))
         rec = {"id": (e["type"][0] + str(e["id"])) if e["type"] != "group" else None,
                "name": t.get("name") or "Disc golf course", "c": r6(c["center"])}
         n_tag = ref_num(t.get("holes"))

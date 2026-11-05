@@ -149,6 +149,13 @@ All URLs are in the `SRC` block near the top of the app script. If an agency mov
 | `wiRoadsCar`, `wiRoadsAtvSnow`, `wiRoadsAtv`, `wiRoadsSnow` | WI DNR `DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext` layers 1–4 | Car roads → `mnroads` (dashed = open seasonally, `DATE_OPEN_FROM/TO` MMDD); ATV/snowmobile → `mnmotor`, merged per `ROAD_SEQ_NO` on tap |
 | `wiBoat` | WI DNR `arcgis2/PR_Recreation/PR_Boat_Access_Shore_Fishing_WTM_Ext` layer 2 | Toggle `mnaccess`, `ABANDON_FLAG = 'No'` (`LF.REC_WHERE`). Layer 1 = shore fishing sites (not used) |
 
+| `mnTroutStreams`, `mnTroutLakes` | MN DNR `env_trout_stream_designations` (0), `env_trout_lake_designation` (layer 2, `trout_lake`='Y') | Toggle `trout`. Both `trout_flag` values (1, 2) are designated streams; meaning undocumented, not shown |
+| `wiTroutStreams`, `wiTroutLakes` | WI DNR `FM_Trout/FM_TROUT_REGS_WTM_Ext` layers 0, 1 | Toggle `trout`. `SEASON_TXT`, `EARLY_SEASON_TXT`, `BAG_LMT`, gear ("N/A" hidden) |
+
+Trout water (`trout`, Layers > Fishing, off by default, zoom 8+): electric cyan `#00e5ff` with a dark `#06303a` casing on
+`troutPane` 427 / `troutCasePane` 426 (above public land, below trails); lakes filled cyan (`baseFill`, so Hide shading clears it).
+A tap that finds only trout water titles the section "Trout water".
+
 The four `mn*` switch keys now cover both states (labels say WI & MN; keys kept so saved settings carry over). WI has no
 statewide snowmobile/ATV trail layer (county and club trails); only DNR roads open to those vehicles are shown.
 

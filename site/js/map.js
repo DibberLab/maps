@@ -32,7 +32,12 @@ const SRC = LF.SRC = {
   wiRoadsAtvSnow:'https://dnrmaps.wi.gov/arcgis/rest/services/DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext/MapServer/2',
   wiRoadsAtv:    'https://dnrmaps.wi.gov/arcgis/rest/services/DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext/MapServer/3',
   wiRoadsSnow:   'https://dnrmaps.wi.gov/arcgis/rest/services/DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext/MapServer/4',
-  wiBoat:        'https://dnrmaps.wi.gov/arcgis2/rest/services/PR_Recreation/PR_Boat_Access_Shore_Fishing_WTM_Ext/MapServer/2'
+  wiBoat:        'https://dnrmaps.wi.gov/arcgis2/rest/services/PR_Recreation/PR_Boat_Access_Shore_Fishing_WTM_Ext/MapServer/2',
+  /* Designated trout waters: MN DNR streams and lakes; WI DNR stream and lake regulation layers (season, bag, gear). */
+  mnTroutStreams:'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/env_trout_stream_designations/MapServer/0',
+  mnTroutLakes:  'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/env_trout_lake_designation/MapServer/2',
+  wiTroutStreams:'https://dnrmaps.wi.gov/arcgis/rest/services/FM_Trout/FM_TROUT_REGS_WTM_Ext/MapServer/0',
+  wiTroutLakes:  'https://dnrmaps.wi.gov/arcgis/rest/services/FM_Trout/FM_TROUT_REGS_WTM_Ext/MapServer/1'
 };
 /* How each MN trail / road / access layer is drawn; identify.js shares these for tap details. */
 const REC = LF.REC = {
@@ -49,7 +54,12 @@ const REC = LF.REC = {
   wiRoadsAtvSnow:{ color:'#c62828', dash:'9 5', label:'DNR road open to ATV/UTV & snowmobiles' },
   wiRoadsAtv:    { color:'#c62828', dash:'9 5', label:'DNR road open to ATVs' },
   wiRoadsSnow:   { color:'#1565c0', dash:'2 6', label:'DNR road open to snowmobiles' },
-  wiBoat:        { color:'#0277bd', label:'Boat landing' }
+  wiBoat:        { color:'#0277bd', label:'Boat landing' },
+  // Trout water: electric cyan with a dark edge, a colour nothing else on the map uses.
+  mnTroutStreams:{ color:'#00e5ff', dash:null, label:'Designated trout stream' },
+  mnTroutLakes:  { color:'#00e5ff', label:'Designated trout lake' },
+  wiTroutStreams:{ color:'#00e5ff', dash:null, label:'Trout stream' },
+  wiTroutLakes:  { color:'#00e5ff', label:'Trout lake or pond' }
 };
 LF.REC_WHERE = { wiBoat:"ABANDON_FLAG = 'No'" };
 LF.MN_DNR_LAYER = 3;
@@ -231,13 +241,14 @@ map.createPane('recCasePane'); map.getPane('recCasePane').style.zIndex = 429; ma
 map.createPane('recPane'); map.getPane('recPane').style.zIndex = 430; map.getPane('recPane').style.pointerEvents = 'none';
 const recWidth = () => map.getZoom() >= 14 ? 3.2 : 2.2;
 /* One request per layer: the white casing copies each feature the coloured layer loads (into a pane just below it). */
-function cased(key, fields, style){
-  const fl = L.esri.featureLayer(Object.assign({ url:SRC[key], pane:'recPane', minZoom:10, interactive:false, simplifyFactor:0.6, precision:5, fields, style },
+function cased(key, fields, style, o){
+  o = o || {}; const minZoom = o.minZoom || 10;
+  const fl = L.esri.featureLayer(Object.assign({ url:SRC[key], pane:o.pane || 'recPane', minZoom, interactive:false, simplifyFactor:0.6, precision:5, fields, style },
     LF.REC_WHERE[key] ? { where:LF.REC_WHERE[key] } : {}));
   const cas = L.layerGroup(), byId = new Map();
-  const caseStyle = () => ({ color:'#fff', weight:recWidth() + 3, opacity:map.getZoom() >= 10 ? .75 : 0, lineCap:'round', lineJoin:'round' });
+  const caseStyle = () => ({ color:o.casing || '#fff', weight:(o.width ? o.width() : recWidth()) + 3, opacity:map.getZoom() >= minZoom ? (o.casingOpacity || .75) : 0, lineCap:'round', lineJoin:'round' });
   fl.on('createfeature addfeature', e => { if(byId.has(e.feature.id)) return;
-    const c = L.geoJSON(e.feature, { pane:'recCasePane', interactive:false, style:caseStyle }); byId.set(e.feature.id, c); cas.addLayer(c); });
+    const c = L.geoJSON(e.feature, { pane:o.casePane || 'recCasePane', interactive:false, style:caseStyle }); byId.set(e.feature.id, c); cas.addLayer(c); });
   fl.on('removefeature', e => { const c = byId.get(e.feature.id); if(c){ cas.removeLayer(c); byId.delete(e.feature.id); } });
   cas.restyle = () => cas.eachLayer(g => g.setStyle(caseStyle()));
   return [cas, fl];
@@ -247,8 +258,19 @@ const roadStyle = f => ({ color:REC.mnForestRoads.color, weight:recWidth(), dash
 const wiRoadStyle = f => ({ color:REC.wiRoadsCar.color, weight:recWidth(), dashArray:/season/i.test(f.properties.ROAD_PUBLIC_USE || '') ? '10 6' : null, opacity:.95 });
 const accessDot = (ll, trailer, color) => L.circleMarker(ll, { pane:'recPane', interactive:false, radius:trailer ? 6.5 : 5, color:'#fff', weight:2,
   fillColor:trailer ? color : '#26a69a', fillOpacity:1 });
+/* Trout water sits just above other water and public land, below trails: thick cyan with a dark edge, from zoom 8. */
+map.createPane('troutCasePane'); map.getPane('troutCasePane').style.zIndex = 426; map.getPane('troutCasePane').style.pointerEvents = 'none';
+map.createPane('troutPane'); map.getPane('troutPane').style.zIndex = 427; map.getPane('troutPane').style.pointerEvents = 'none';
+const troutWidth = () => map.getZoom() >= 14 ? 4.5 : map.getZoom() >= 11 ? 3.5 : 2.5;
+const troutLine = () => ({ color:'#00e5ff', weight:troutWidth(), opacity:1, lineCap:'round', lineJoin:'round' });
+const troutTrim = { minZoom:8, pane:'troutPane', casePane:'troutCasePane', casing:'#06303a', casingOpacity:.9, width:troutWidth };
+const troutLake = () => ({ color:'#00e5ff', weight:2.5, opacity:1, fillColor:'#00e5ff', baseFill:.35, fillOpacity:LF.fillOf(.35) });
 const layers = LF.layers = {
   terrain,
+  trout: L.layerGroup([
+    L.esri.featureLayer({ url:SRC.mnTroutLakes, pane:'troutPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5, fields:['objectid'], style:troutLake }),
+    L.esri.featureLayer({ url:SRC.wiTroutLakes, pane:'troutPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5, fields:['OBJECTID'], style:troutLake }),
+    ...cased('mnTroutStreams', ['objectid'], troutLine, troutTrim), ...cased('wiTroutStreams', ['OBJECTID'], troutLine, troutTrim)]),
   // These four switches cover both states (the keys keep their first names so saved settings carry over).
   mntrails: L.layerGroup([...cased('mnStateTrails', ['objectid'], recLine('mnStateTrails')), ...cased('mnHunterTrails', ['objectid'], recLine('mnHunterTrails')),
     ...cased('wiStateTrails', ['OBJECTID'], recLine('wiStateTrails')), ...cased('wiIceAge', ['OBJECTID'], recLine('wiIceAge')), ...cased('wiNct', ['OBJECTID'], recLine('wiNct'))]),
@@ -287,7 +309,7 @@ const layers = LF.layers = {
 // Remember each picture layer's own opacity so Hide shading can put it back.
 ['widnr', 'wiclosed'].forEach(k => { layers[k]._baseOpacity = layers[k].options.opacity; });
 layers.mndnr.eachLayer(l => { l._baseOpacity = l.options.opacity; });
-const defaults = { terrain:false, mntrails:false, mnmotor:false, mnroads:false, mnaccess:false, parcels:true, mncov:true, padus:true, widnr:true, wiclosed:false, wimfl:false, mndnr:true };
+const defaults = { terrain:false, trout:false, mntrails:false, mnmotor:false, mnroads:false, mnaccess:false, parcels:true, mncov:true, padus:true, widnr:true, wiclosed:false, wimfl:false, mndnr:true };
 const on = LF.on = Object.assign({}, defaults, prefs.get('layers', {}));
 if(fromLink.layers) Object.keys(layers).forEach(k => { on[k] = fromLink.layers.includes(k); });
 
@@ -313,9 +335,9 @@ Object.keys(layers).forEach(k => {
 });
 if(fromLink.layers) prefs.set('layers', on);
 map.on('moveend zoomend', onView); onView();
-let recState = '';   // lines get bolder from zoom 14; casings hide below zoom 10 with their lines
-map.on('zoomend', () => { const z = map.getZoom(), st = (z >= 14) + ',' + (z >= 10); if(st === recState) return; recState = st;
-  ['mntrails', 'mnmotor', 'mnroads'].forEach(k => layers[k].eachLayer(l => l.restyle ? l.restyle() : l.setStyle && l.setStyle(l.options.style))); });
+let recState = '';   // lines get bolder from zoom 11/14; casings hide below their layer's minimum zoom
+map.on('zoomend', () => { const z = map.getZoom(), st = (z >= 14) + ',' + (z >= 11) + ',' + (z >= 10) + ',' + (z >= 8); if(st === recState) return; recState = st;
+  ['mntrails', 'mnmotor', 'mnroads', 'trout'].forEach(k => layers[k].eachLayer(l => l.restyle ? l.restyle() : l.setStyle && l.setStyle(l.options.style))); });
 
 /* Fit bounds into the part of the map you can see: above the sheet on a phone,
    beside it on a desktop, below the top bar. */

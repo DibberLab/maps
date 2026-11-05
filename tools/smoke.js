@@ -121,6 +121,12 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.waitForFunction(() => !/Looking up/.test(document.querySelector('#sheetHead').textContent), null, { timeout: 40000 }).catch(() => {});
   const wiRec = await page.evaluate(() => { const b = document.querySelector('#sheetBody .block'); return b ? b.textContent : ''; });
   check(/Boat landing/.test(wiRec) && /Atlas Park/.test(wiRec), 'tap on a WI DNR boat landing shows it: ' + wiRec.slice(0, 80));
+  // Designated trout water: a WI trout stream shows its season and bag limit.
+  await page.goto('about:blank');
+  await page.goto(BASE + '#map=16/45.8999/-92.6686&pin=45.8999,-92.6686&base=img&layers=trout');
+  await page.waitForFunction(() => !/Looking up/.test(document.querySelector('#sheetHead').textContent), null, { timeout: 40000 }).catch(() => {});
+  const trout = await page.evaluate(() => { const b = document.querySelector('#sheetBody .block'); return b ? b.textContent : ''; });
+  check(/Trout water/.test(trout) && /Ekdall Brook/.test(trout) && /Bag limit/.test(trout), 'tap on a WI trout stream shows its regulations: ' + trout.slice(0, 80));
 
   // 5e. Phones: drag the panel down by its grab bar to tuck it (still open, title showing); a tap brings it back.
   const g = await page.locator('#sheetGrab').boundingBox();

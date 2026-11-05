@@ -382,3 +382,13 @@ button.brand .burger{margin-right:12px}
 .linkpop{position:fixed;z-index:1100;left:50%;top:calc(76px + env(safe-area-inset-top,0px));transform:translateX(-50%);width:min(92vw,420px);
   background:var(--panel);border-radius:10px;box-shadow:var(--shadow);padding:12px}
 .linkpop input{width:100%;margin:6px 0 8px;font:15px var(--body);padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:inherit}
+
+/* Disc golf course mapping bar (dgcourse.js). */
+.coursebar{position:fixed;z-index:1001;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(96vw,520px);
+  background:var(--panel);border-radius:12px;box-shadow:var(--shadow);padding:10px 12px;border-top:4px solid #0f766e}
+.coursebar[hidden]{display:none}
+.coursebar .cb-head{display:flex;flex-direction:column;gap:2px;margin-bottom:8px;font-size:15px}
+.coursebar .cb-btns{display:flex;flex-wrap:wrap;gap:6px}
+.coursebar .btn{min-height:40px;padding:8px 11px}
+.coursebar .cb-btns .btn:first-child{flex:1 0 100%}
+.coursebar .btn.primary{background:#0f766e;border-color:#0f766e}

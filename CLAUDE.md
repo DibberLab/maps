@@ -69,6 +69,12 @@ site/                 the whole app: static files, no build step
                       anchors the middle point is the built-in one. Folder ⋯ "Make its tracks disc golf holes" and Select-mode
                       "Make disc golf holes" set r.dg (hole # from the name: holeFromName). Track points are [lat,lng,alt,t]:
                       pass [p[0],p[1]] to Leaflet (it rejects 4-element arrays).
+  js/dgcourse.js      disc golf part 1, Map a course (+ > Disc golf): course name → folder ("Disc golf / <name>", or an existing course
+                      folder, continuing from its next hole). A bottom bar per hole: Tee pad here (raw GPS averaged ≤12 s,
+                      LF.gpsAverageOf from draw.js) → fairway recorded from 'gps' fixes → Basket here saves a dg track (Hole N,
+                      par, color #0f766e; tidy()'d; 11-point straight line if nothing was walked). LF.mode='course': a map tap
+                      sets the tee/basket instead. Par ±, Redo hole / Undo last, Done (opens the folder). State in pref 'dgCourse',
+                      resumed after a reload. Next: part 2 scoring rounds, part 3 throw distances.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

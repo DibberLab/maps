@@ -507,6 +507,7 @@ function shrink(file){
 
 /* ---------- Creating ---------- */
 LF.items = {
+  cleanFolder:f => cleanFolder(f),
   open, ICONS,
   newWaypoint(ll, o){ o = o || {}; edit('waypoints', Object.assign({ lat:+(+ll[0]).toFixed(7), lng:+(+ll[1]).toFixed(7), icon:'pin', name:o.name || '' },
     o.gpsAcc ? { gpsAcc:o.gpsAcc, gpsN:o.gpsN } : {}), true); },

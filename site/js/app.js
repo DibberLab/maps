@@ -133,10 +133,11 @@ map.on('click', () => { if(!tPanel.hidden) tools(false); });
 tPanel.addEventListener('click', e => {
   const b = e.target.closest('[data-tool]'); if(!b) return;
   const t = b.dataset.tool; tools(false);
-  const NEED = { waypoint:'waypoints', track:'tracks', list:'waypoints, tracks and drawings', 'offline-save':'offline areas', 'offline-list':'offline areas' };
+  const NEED = { waypoint:'waypoints', track:'tracks', dgcourse:'disc golf courses', list:'waypoints, tracks and drawings', 'offline-save':'offline areas', 'offline-list':'offline areas' };
   if(NEED[t] && !LF.account.require(NEED[t])) return;
   if(t === 'track'){ if(LF.track.recording()) flash('Already recording. Use Stop at the top.'); else LF.track.start(); }
   else if(t === 'list') LF.items.list();
+  else if(t === 'dgcourse') LF.course.start();
   else if(t === 'offline-save') LF.offline.save();
   else if(t === 'offline-list') LF.offline.list();
   else LF.draw.start(t);

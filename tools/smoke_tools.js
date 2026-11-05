@@ -428,6 +428,41 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.click('[data-act=sh-save]'); await page.waitForTimeout(800);
   check(await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.sharedFrom).length)) === 2, 'saving the same share again updates the copies, not doubles them');
 
+  // 16. Disc golf: map a course. Hole 1 walked with GPS (tee averaged, fairway recorded, basket averaged);
+  //     hole 2 planned by tapping the map. Saved as disc golf holes in the course folder.
+  await page.goto('about:blank'); await page.goto(BASE + '#map=18/45.86/-92.62', { waitUntil:'domcontentloaded' });
+  await page.waitForFunction(() => window.LF && LF.course);
+  await ctx.setGeolocation({ latitude:45.86, longitude:-92.62, accuracy:6 });
+  await tool('dgcourse');
+  await page.fill('#c-name', 'Test Park');
+  check(await page.inputValue('#c-folder') === 'Disc golf / Test Park', 'the course gets a folder named after it');
+  await page.click('[data-act=go]');
+  await page.waitForSelector('.coursebar:not([hidden]) [data-c=tee]');
+  check(/Test Park · Hole 1 · Par 3/.test(await page.textContent('.coursebar')), 'the course bar shows the course, hole and par');
+  await page.click('.coursebar [data-c=tee]');
+  for(let i = 0; i < 3; i++){ await ctx.setGeolocation({ latitude:45.86 + i * 0.000005, longitude:-92.62, accuracy:6 }); await page.waitForTimeout(400); }
+  await page.click('.coursebar [data-c=avg-now]');
+  await page.waitForSelector('.coursebar [data-c=basket]');
+  for(let i = 1; i <= 5; i++){ await ctx.setGeolocation({ latitude:45.86 + i * 0.0001, longitude:-92.62 + i * 0.00003, accuracy:6 }); await page.waitForTimeout(1200); }
+  check(/Fairway \d+ ft/.test(await page.textContent('.coursebar')), 'the fairway records as you walk: ' + (await page.textContent('.coursebar .small')).trim());
+  await page.click('.coursebar [data-c=basket]');
+  for(let i = 0; i < 3; i++){ await ctx.setGeolocation({ latitude:45.8605 + i * 0.000005, longitude:-92.61985, accuracy:6 }); await page.waitForTimeout(400); }
+  await page.click('.coursebar [data-c=avg-now]');
+  await page.waitForFunction(() => /Hole 2/.test(document.querySelector('.coursebar').textContent));
+  // Hole 2 from the aerial: tap the tee, then the basket.
+  const vw2 = page.viewportSize();
+  await page.click('.coursebar [data-c="par+"]');
+  await page.mouse.click(vw2.width * 0.3, vw2.height * 0.3); await page.waitForTimeout(300);
+  await page.mouse.click(vw2.width * 0.7, vw2.height * 0.45); await page.waitForTimeout(800);
+  const holes = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.folder === 'Disc golf / Test Park').map(x => ({ n:x.dg.hole, par:x.dg.par, pts:x.points.length, len:Math.round(LF.geo.length(x.points)) }))));
+  const h1 = holes.find(h => h.n === '1'), h2 = holes.find(h => h.n === '2');
+  check(h1 && h1.pts >= 4 && h1.len > 40 && h1.len < 80, 'hole 1 saved from the walk: ' + JSON.stringify(h1));
+  check(h2 && h2.par === '4' && h2.pts === 11, 'hole 2 saved from two taps, par 4, straight fairway: ' + JSON.stringify(h2));
+  check(/Hole 3/.test(await page.textContent('.coursebar')), 'the bar moves on to hole 3');
+  await page.click('.coursebar [data-c=done]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Disc golf / Test Park")');
+  check(await page.isHidden('.coursebar') && await page.evaluate(() => !LF.mode), 'Done closes the bar and opens the course folder');
+
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));

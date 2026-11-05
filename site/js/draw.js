@@ -59,6 +59,7 @@ function averageOf(fixes){
   const med = accs[Math.floor(accs.length / 2)], indep = Math.max(1, (fixes[fixes.length - 1].t - fixes[0].t) / 5000);
   return { ll:[la / w, ln / w], acc:Math.max(1, med / Math.sqrt(indep)), n:use.length };
 }
+LF.gpsAverageOf = averageOf;   // shared with the disc golf course mapper
 function showAverage(){
   if(!avg) return;
   const s = Math.round((Date.now() - avg.started) / 1000), n = avg.fixes.length;

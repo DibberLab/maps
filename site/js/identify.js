@@ -38,7 +38,7 @@ function query(url, latlng, fields, opts){
     if(opts.nearby) q.nearby(latlng, opts.nearby); else q.intersects(latlng);
     if(opts.where) q.where(opts.where);
     q.returnGeometry(opts.geometry === true || (!opts.nearby && opts.geometry !== false));
-    if(opts.nearby && opts.geometry === true) q.simplify(map, 0.5);
+    if(opts.nearby && opts.geometry === true && !opts.fullDetail) q.simplify(map, 0.5);
     if(fields) q.fields(fields);
     q.run((err,fc)=> res(err || !fc ? { err: err || true, features:[] } : { features: fc.features||[] }));
   }), { features:[] });
@@ -83,7 +83,7 @@ function recLookup(ll){
   const keys = Object.entries(REC_LAYERS).filter(([k]) => on[k] && map.getZoom() >= (REC_MINZ[k] || 10)).flatMap(([, v]) => v).filter(k => states.includes(REC_STATE(k)));
   if(!keys.length) return null;
   // A finger is wide: lines answer within ~22 px, dots within ~24 px (never less than 15 m).
-  return Promise.all(keys.map(key => query(SRC[key], ll, REC_FIELDS[key], { where:LF.REC_WHERE[key], geometry:true,
+  return Promise.all(keys.map(key => query(SRC[key], ll, REC_FIELDS[key], { where:LF.REC_WHERE[key], geometry:true, fullDetail:/Trout/.test(key),
       nearby:Math.min(500, Math.max(15, mpp * (/Access|Boat/.test(key) ? LF.REC_TAP.dot : LF.REC_TAP.line))) })
     .then(q => ({ err:q.err, results:q.features.slice(0, 3).map(f => ({ key, p:f.properties, f, d:distTo(ll, f) })) }))))
     .then(all => ({ err:all.every(a => a.err), results:[].concat(...all.map(a => a.results)).sort((a, b) => a.d - b.d) }));
@@ -492,7 +492,7 @@ function render(ll, r, savedArea){
     if(g && g.type === 'Point') LF.select.point([g.coordinates[1], g.coordinates[0]], { color:R.color });
     // One bold line over the feature (no extra white casing, so a creek doesn't look marked twice); creeks smoothed like the layer.
     else if(g){ if(/Trout/.test(focus.key)) LF.smoothGeometry(g);
-      LF.select.shape(focus.f, { color:R.color, weight:/Polygon/.test(g.type) ? 3 : 6, casing:false, fill:/Polygon/.test(g.type) ? .15 : 0 }); }
+      LF.select.shape(focus.f, { color:R.color, weight:/Polygon/.test(g.type) ? 3 : 6, casing:false, fill:/Polygon/.test(g.type) ? .3 : 0 }); }
   }
   head.innerHTML = `<h2>${esc(title)}</h2><div>${tags}</div><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
   if(savedArea) html = `<p class="note saved-note">From your offline copy of “${esc(savedArea.name)}”, saved ${new Date(savedArea.updated || savedArea.created).toLocaleDateString('en-US')}.` +

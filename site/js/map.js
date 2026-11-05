@@ -258,8 +258,9 @@ function chaikin(pts, n){
   return pts;
 }
 LF.smoothGeometry = g => { if(!g || g._smooth) return g;
-  if(g.type === 'LineString') g.coordinates = chaikin(g.coordinates, 2);
-  else if(g.type === 'MultiLineString') g.coordinates = g.coordinates.map(l => chaikin(l, 2));
+  // One light pass: rounds the corners without pulling the line off the creek.
+  if(g.type === 'LineString') g.coordinates = chaikin(g.coordinates, 1);
+  else if(g.type === 'MultiLineString') g.coordinates = g.coordinates.map(l => chaikin(l, 1));
   g._smooth = true; return g; };
 const SmoothLines = L.esri.FeatureLayer.extend({
   createLayers(features){
@@ -285,21 +286,20 @@ const roadStyle = f => ({ color:REC.mnForestRoads.color, weight:recWidth(), dash
 const wiRoadStyle = f => ({ color:REC.wiRoadsCar.color, weight:recWidth(), dashArray:/season/i.test(f.properties.ROAD_PUBLIC_USE || '') ? '10 6' : null, opacity:.95 });
 const accessDot = (ll, trailer, color) => L.circleMarker(ll, { pane:'recPane', interactive:false, radius:trailer ? 6.5 : 5, color:'#fff', weight:2,
   fillColor:trailer ? color : '#26a69a', fillOpacity:1 });
-/* Trout water sits just above other water and public land, below trails: thick cyan with a dark edge, from zoom 8. */
-map.createPane('troutCasePane'); map.getPane('troutCasePane').style.zIndex = 426; map.getPane('troutCasePane').style.pointerEvents = 'none';
+/* Trout water sits just above other water and public land, below trails, from zoom 8. One line per creek, nothing under it:
+   always fetched at full detail (no generalising), so its shape at every zoom is the shape you see zoomed all the way in.
+   Lakes: a cyan outline with a light fill that stays even with Hide shading on (it's the point of the layer). */
 map.createPane('troutPane'); map.getPane('troutPane').style.zIndex = 427; map.getPane('troutPane').style.pointerEvents = 'none';
-const troutWidth = () => map.getZoom() >= 14 ? 4.5 : map.getZoom() >= 11 ? 3.5 : 2.5;
-const troutLine = () => ({ color:'#00e5ff', weight:troutWidth(), opacity:1, lineCap:'round', lineJoin:'round' });
-// One line, not two: a soft cyan glow under the core instead of a dark edge; smoothed, and fetched in more detail.
-const troutTrim = { minZoom:8, pane:'troutPane', casePane:'troutCasePane', casing:'#00e5ff', casingOpacity:.3, casingExtra:8, width:troutWidth,
-  smooth:true, simplify:0.25, precision:6 };
-const troutLake = () => ({ color:'#00e5ff', weight:2.5, opacity:1, fillColor:'#00e5ff', baseFill:.35, fillOpacity:LF.fillOf(.35) });
+const troutWidth = () => map.getZoom() >= 14 ? 5 : map.getZoom() >= 11 ? 4 : 3;
+const troutLine = () => ({ color:'#00e5ff', weight:troutWidth(), opacity:1, lineCap:'round', lineJoin:'round', smoothFactor:.5 });
+const troutLake = () => ({ color:'#00e5ff', weight:2.5, opacity:1, fillColor:'#00e5ff', fillOpacity:.25, smoothFactor:.5 });
+const troutStreams = key => new SmoothLines({ url:SRC[key], pane:'troutPane', minZoom:8, interactive:false, precision:6, recKey:key,
+  fields:[key === 'mnTroutStreams' ? 'objectid' : 'OBJECTID', REC_NAME[key]], style:troutLine });
+const troutLakes = key => L.esri.featureLayer({ url:SRC[key], pane:'troutPane', minZoom:8, interactive:false, precision:6, recKey:key,
+  fields:[key === 'mnTroutLakes' ? 'objectid' : 'OBJECTID', REC_NAME[key]], style:troutLake });
 const layers = LF.layers = {
   terrain,
-  trout: L.layerGroup([
-    L.esri.featureLayer({ url:SRC.mnTroutLakes, pane:'troutPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5, fields:['objectid', 'pw_basin_name'], style:troutLake, recKey:'mnTroutLakes' }),
-    L.esri.featureLayer({ url:SRC.wiTroutLakes, pane:'troutPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5, fields:['OBJECTID', 'WATERBODY_'], style:troutLake, recKey:'wiTroutLakes' }),
-    ...cased('mnTroutStreams', ['objectid'], troutLine, troutTrim), ...cased('wiTroutStreams', ['OBJECTID'], troutLine, troutTrim)]),
+  trout: L.layerGroup([troutLakes('mnTroutLakes'), troutLakes('wiTroutLakes'), troutStreams('mnTroutStreams'), troutStreams('wiTroutStreams')]),
   // These four switches cover both states (the keys keep their first names so saved settings carry over).
   mntrails: L.layerGroup([...cased('mnStateTrails', ['objectid'], recLine('mnStateTrails')), ...cased('mnHunterTrails', ['objectid'], recLine('mnHunterTrails')),
     ...cased('wiStateTrails', ['OBJECTID'], recLine('wiStateTrails')), ...cased('wiIceAge', ['OBJECTID'], recLine('wiIceAge')), ...cased('wiNct', ['OBJECTID'], recLine('wiNct'))]),

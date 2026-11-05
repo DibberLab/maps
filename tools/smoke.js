@@ -102,7 +102,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
 
   // 5c. Minnesota close-up: the MnGeo composite, reshaped from UTM, draws over the metro at zoom 18.
   await page.goto(BASE + '#map=18/45.0935/-93.1300&base=img&layers=parcels');
-  await page.reload();
+  await page.reload({ waitUntil:'domcontentloaded' });
   const mnOk = await page.waitForFunction(() => { const c = LF.closeup.mn.getContainer(); return c && c.querySelectorAll('canvas.leaflet-tile-loaded').length > 0; }, null, { timeout: 45000 }).then(() => true, () => false);
   check(mnOk, 'Minnesota leaf-off close-up tiles draw (MnGeo composite)');
   await page.screenshot({ path: path.join(OUT, 'smoke-mn-closeup.png') });

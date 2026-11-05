@@ -153,9 +153,11 @@ All URLs are in the `SRC` block near the top of the app script. If an agency mov
 | `mnTroutStreams`, `mnTroutLakes` | MN DNR `env_trout_stream_designations` (0), `env_trout_lake_designation` (layer 2, `trout_lake`='Y') | Toggle `trout`. Both `trout_flag` values (1, 2) are designated streams; meaning undocumented, not shown |
 | `wiTroutStreams`, `wiTroutLakes` | WI DNR `FM_Trout/FM_TROUT_REGS_WTM_Ext` layers 0, 1 | Toggle `trout`. `SEASON_TXT`, `EARLY_SEASON_TXT`, `BAG_LMT`, gear ("N/A" hidden) |
 
-Trout water (`trout`, Layers > Fishing, off by default, zoom 8+): electric cyan `#00e5ff` on `troutPane` 427 with a soft cyan glow
-(not a dark edge, which read as a second line) on `troutCasePane` 426; lakes filled cyan (`baseFill`). Streams are fetched finer
-(simplifyFactor .25, precision 6) and corner-rounded by `SmoothLines` (Chaikin ×2 in `createLayers`; `LF.smoothGeometry`).
+Trout water (`trout`, Layers > Fishing, off by default, zoom 8+): one electric cyan `#00e5ff` line per creek on `troutPane` 427, no
+casing or glow (a casing copied from the first, generalised load drifted from the line as you zoomed and read as a "ghost"). Streams
+and lakes are fetched at full detail at every zoom (no simplifyFactor, precision 6), so the shape matches the zoomed-in one; one light
+Chaikin pass (`SmoothLines`, `LF.smoothGeometry`) rounds corners. Lakes: cyan outline + fixed 0.25 fill, deliberately not
+`baseFill`, so Hide shading leaves them shaded. Tap lookups fetch trout geometry unsimplified too (`fullDetail`).
 
 Taps: rec/trout lookups reach `LF.REC_TAP` (22 px lines, 24 px dots), return geometry, and sort nearest first (`recList`). When one
 is hit it becomes the panel title + tag and the only outline (`LF.select.shape(..., {casing:false})`); parcel / public land are

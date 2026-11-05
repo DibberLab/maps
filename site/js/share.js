@@ -16,7 +16,7 @@ function parse(hash){
   const q = new URLSearchParams(String(hash || '').replace(/^#/, ''));
   const m = (q.get('map') || '').split('/');
   if(m.length === 3){
-    const z = num(m[0], 1, 20), lat = num(m[1], -90, 90), lng = num(m[2], -180, 180);
+    const z = num(m[0], 1, 22), lat = num(m[1], -90, 90), lng = num(m[2], -180, 180);
     if(z !== null && lat !== null && lng !== null) out.view = [lat, lng, Math.round(z)];
   }
   const p = (q.get('pin') || '').split(',');

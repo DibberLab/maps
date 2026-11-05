@@ -78,17 +78,17 @@ const saved = prefs.get('view', [45.6, -92.0, 7]);
 const start = fromLink.view || saved;
 
 /* ---------- Map ---------- */
-const map = LF.map = L.map('map', { zoomControl:true, preferCanvas:true, maxZoom:20 })
+const map = LF.map = L.map('map', { zoomControl:true, preferCanvas:true, maxZoom:22 })
   .setView([start[0], start[1]], start[2] || 7);
 map.zoomControl.setPosition('bottomleft');
 
 const usgs = s => 'https://basemap.nationalmap.gov/arcgis/rest/services/' + s + '/MapServer/tile/{z}/{y}/{x}';
 const bases = LF.bases = {
-  hyb:  L.tileLayer(usgs('USGSImageryTopo'), { maxNativeZoom:16, maxZoom:20, attribution:'Imagery and roads: USGS The National Map' }),
-  img:  L.tileLayer(usgs('USGSImageryOnly'), { maxNativeZoom:16, maxZoom:20, attribution:'Imagery: USGS The National Map' }),
-  topo: L.tileLayer(usgs('USGSTopo'),        { maxNativeZoom:16, maxZoom:20, attribution:'Topo: USGS The National Map' }),
+  hyb:  L.tileLayer(usgs('USGSImageryTopo'), { maxNativeZoom:16, maxZoom:22, attribution:'Imagery and roads: USGS The National Map' }),
+  img:  L.tileLayer(usgs('USGSImageryOnly'), { maxNativeZoom:16, maxZoom:22, attribution:'Imagery: USGS The National Map' }),
+  topo: L.tileLayer(usgs('USGSTopo'),        { maxNativeZoom:16, maxZoom:22, attribution:'Topo: USGS The National Map' }),
   osm:  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        { maxNativeZoom:19, maxZoom:20, attribution:'&copy; OpenStreetMap contributors' })
+        { maxNativeZoom:19, maxZoom:22, attribution:'&copy; OpenStreetMap contributors' })
 };
 /* ---------- Sharp close-up imagery (zoom 17+) ----------
    The USGS tiles above stop at zoom 16. Past that, these image services draw
@@ -113,7 +113,10 @@ const ExportTiles = L.TileLayer.extend({
   _initTile(tile){ L.TileLayer.prototype._initTile.call(this, tile); const s = this.getTileSize();
     tile.style.width = (s.x + 2) + 'px'; tile.style.height = (s.y + 2) + 'px'; tile.style.marginLeft = tile.style.marginTop = '-1px'; }
 });
-const HD = { tileSize:512, zoomOffset:-1, minZoom:17, maxZoom:20, maxNativeZoom:20, keepBuffer:1, crossOrigin:true, className:'hd-tile' };
+// Zoom 21-22: WI DNR and MN imagery (down to 3-inch pixels) is fetched at map zoom 21 and enlarged at 22; NAIP (~1 ft) stops at 20.
+// Image servers enlarge past their pixel size with hard blocks; bilinear keeps close zooms smooth.
+const SMOOTH = '&interpolation=RSP_BilinearInterpolation';
+const HD = { tileSize:512, zoomOffset:-1, minZoom:17, maxZoom:22, maxNativeZoom:21, keepBuffer:1, crossOrigin:true, className:'hd-tile' };
 
 /* ---------- Minnesota leaf-off close-up (MnGeo composite) ----------
    MnGeo's "best available" composite (mostly spring leaf-off or late fall county imagery, down to 3 in
@@ -146,7 +149,9 @@ const WarpTiles = L.GridLayer.extend({
     let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
     const m = (x1 - x0) * 0.01; x0 -= m; x1 += m; y0 -= m; y1 += m;
     const across = Math.hypot(pts[CELLS][0] - pts[0][0], pts[CELLS][1] - pts[0][1]);   // the tile's top edge, metres
-    const w = Math.min(1024, Math.round(512 * (x1 - x0) / across)), h = Math.min(1024, Math.round(512 * (y1 - y0) / across));
+    // Never ask for finer than the best MN imagery (3 in): past that the canvas enlarges it smoothly instead of the server's blocks.
+    const mpp = Math.max(across / 512, 0.075);
+    const w = Math.min(1024, Math.round((x1 - x0) / mpp)), h = Math.min(1024, Math.round((y1 - y0) / mpp));
     return { pts, x0, x1, y0, y1, w, h };
   },
   urlFor(c){ const g = this._grid(c); return this._url(g); },
@@ -185,12 +190,12 @@ const WarpTiles = L.GridLayer.extend({
 });
 const WI_BOUNDS = L.latLngBounds([42.4, -92.95], [47.4, -86.2]);
 const closeup = LF.closeup = {
-  naip: new ExportTiles('https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer', '&bandIds=0,1,2',
-    Object.assign({ zIndex:2, attribution:'Close-up: USGS NAIP' }, HD)),
-  wi: new ExportTiles('https://dnrmaps.wi.gov/arcgis_image/rest/services/DW_Imagery/EN_Image_Basemap_Latest_Leaf_Off/ImageServer', '',
+  naip: new ExportTiles('https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer', '&bandIds=0,1,2' + SMOOTH,
+    Object.assign({ zIndex:2, attribution:'Close-up: USGS NAIP' }, HD, { maxNativeZoom:20 })),
+  wi: new ExportTiles('https://dnrmaps.wi.gov/arcgis_image/rest/services/DW_Imagery/EN_Image_Basemap_Latest_Leaf_Off/ImageServer', SMOOTH,
     Object.assign({ zIndex:4, bounds:WI_BOUNDS, attribution:'Close-up: WI DNR / WROC leaf-off' }, HD)),
   mn: new WarpTiles('https://imageserver.gisdata.mn.gov/cgi-bin/mncomp?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=mncomp&STYLES=&CRS=EPSG:26915&FORMAT=image/jpeg',
-    { tileSize:512, minZoom:17, maxZoom:20, keepBuffer:1, zIndex:3, bounds:MN_BOUNDS, className:'hd-tile', attribution:'Close-up: MnGeo composite (MN counties, MnDOT, USDA)' })
+    { tileSize:512, minZoom:17, maxZoom:22, maxNativeZoom:21, keepBuffer:1, zIndex:3, bounds:MN_BOUNDS, className:'hd-tile', attribution:'Close-up: MnGeo composite (MN counties, MnDOT, USDA)' })
 };
 /* Which close-up layers a setting uses: leaf-off draws MN and WI on top of NAIP (NAIP fills gaps and other states). */
 const CLOSEUP = { leafoff:['naip', 'mn', 'wi'], summer:['naip'], off:[] };
@@ -238,7 +243,7 @@ map.getPane('terrainPane').style.pointerEvents = 'none';
 map.getPane('terrainPane').style.filter = 'invert(1) brightness(2.5) invert(1)';
 const terrain = new ExportTiles('https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer',
   '&renderingRule=' + encodeURIComponent('{"rasterFunction":"Hillshade Multidirectional"}'),
-  { tileSize:512, zoomOffset:-1, minZoom:10, maxZoom:20, maxNativeZoom:18, keepBuffer:1, crossOrigin:true, pane:'terrainPane', opacity:1, className:'hd-tile',
+  { tileSize:512, zoomOffset:-1, minZoom:10, maxZoom:22, maxNativeZoom:18, keepBuffer:1, crossOrigin:true, pane:'terrainPane', opacity:1, className:'hd-tile',
     attribution:'Terrain: USGS 3DEP lidar' });
 /* MN DNR trails, forest roads and water accesses: drawn as lines and dots from zoom 10, cased in white so they
    read on aerial and topo alike. Taps are answered by identify.js (nearby lookup), so these aren't interactive. */

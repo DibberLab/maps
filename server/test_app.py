@@ -51,6 +51,7 @@ d = user.get(f"/api/sync?since={seq}").json
 check(len(d["items"]) == 1 and d["items"][0]["deleted"], "deletes sync as tombstones")
 check(J(user, "post", "/api/sync", {"changes": [dict(wp, store="secrets")]}).json["accepted"] == 0, "unknown store ignored")
 check(J(user, "post", "/api/sync", {"changes": [{"store": "rounds", "id": "r1", "updated": 3000, "data": {"id": "r1", "name": "Fish Lake"}}]}).json["accepted"] == 1, "disc golf rounds sync")
+check(J(user, "post", "/api/sync", {"changes": [{"store": "throws", "id": "t1", "updated": 3001, "data": {"id": "t1", "dist": 100.2, "disc": "Destroyer"}}]}).json["accepted"] == 1, "disc golf throws sync")
 check(admin.get("/api/sync").json["items"] == [], "accounts don't see each other's items")
 
 check(user.get("/api/me/settings").json["settings"] is None, "no saved settings yet")

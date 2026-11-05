@@ -392,6 +392,11 @@ button.brand .burger{margin-right:12px}
 .coursebar .btn{min-height:40px;padding:8px 11px}
 .coursebar .cb-btns .btn:first-child{flex:1 0 100%}
 .coursebar .btn.primary{background:#0f766e;border-color:#0f766e}
+/* Throw distance (dgthrow.js). */
+.throw-dist{font:800 40px/1.05 var(--display);color:#0f766e}
+.throwbar .row2{display:flex;gap:6px;margin-bottom:8px}
+.throwbar .row2 input,.throwbar .row2 select{flex:1;min-width:0;font:16px var(--body);padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:inherit}
+.throwbar .row2 select{flex:0 0 auto}
 
 /* Disc golf scoring (dgscore.js). */
 .pchips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}

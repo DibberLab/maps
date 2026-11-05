@@ -511,6 +511,41 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   check(/^4$/.test((await ben.locator('#sheetBody .srow').nth(0).locator('.sval').textContent()).trim()), 'and mine shows up on his');
   await benCtx.close();
 
+  // 19. Disc golf: measure throws. Standing on hole 1's tee pad offers its saved spot; walk ~100 m and mark the
+  //     landing (averaged); save and throw again from there; the Throws list shows the best per disc.
+  await page.goto('about:blank'); await page.goto(BASE + '#map=18/45.86/-92.62', { waitUntil:'domcontentloaded' });
+  await page.waitForFunction(() => window.LF && LF.throws);
+  await ctx.setGeolocation({ latitude:45.86, longitude:-92.62, accuracy:6 });
+  await tool('dgthrow');
+  await page.waitForSelector('.throwbar:not([hidden]) [data-t=tee]', { timeout:10000 }).catch(() => {});
+  check(/tee pad of hole 1/.test(await page.textContent('.throwbar')), 'standing on a mapped tee pad offers it as the throw spot');
+  await page.click('.throwbar [data-t=tee]');
+  for(let i = 1; i <= 3; i++){ await ctx.setGeolocation({ latitude:45.86 + i * 0.0003, longitude:-92.62, accuracy:6 }); await page.waitForTimeout(700); }
+  check(/About \d+ ft so far/.test(await page.textContent('.throwbar')), 'the distance counts up as you walk: ' + (await page.textContent('.throwbar .small')).trim());
+  await page.click('.throwbar [data-t=to]');
+  for(let i = 0; i < 3; i++){ await ctx.setGeolocation({ latitude:45.8609 + i * 0.000004, longitude:-92.62, accuracy:4 }); await page.waitForTimeout(400); }
+  await page.click('.throwbar [data-t=avg-now]');
+  await page.waitForSelector('.throwbar .throw-dist');
+  const d1 = parseInt(await page.textContent('.throwbar .throw-dist'), 10);
+  check(d1 > 320 && d1 < 340, 'a 100 m throw measures about 328 ft: ' + d1 + ' ft, ' + (await page.textContent('.throwbar .cb-head .small')).trim());
+  await page.fill('#t-disc', 'Destroyer');
+  await page.click('.throwbar [data-t=next]');
+  await page.waitForSelector('.throwbar [data-t=to]');
+  check(/from last landing/.test(await page.textContent('.throwbar')), 'the next throw starts where the last one landed');
+  const vw3 = page.viewportSize();
+  await page.mouse.click(vw3.width * 0.5, vw3.height * 0.35); await page.waitForTimeout(500);   // landing tapped on the map
+  await page.waitForSelector('.throwbar .throw-dist');
+  await page.fill('#t-disc', 'Buzzz'); await page.selectOption('#t-kind', 'Forehand');
+  await page.click('.throwbar [data-t=save]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Throws")');
+  const thr = await page.evaluate(() => LF.db.all('throws').then(a => a.map(t => ({ disc:t.disc, kind:t.kind, hole:t.hole, ft:Math.round(t.dist * 3.28084) }))));
+  check(thr.length === 2 && thr.some(t => t.disc === 'Destroyer' && t.hole === '1') && thr.some(t => t.disc === 'Buzzz' && t.kind === 'Forehand'), 'both throws saved: ' + JSON.stringify(thr));
+  check(await page.locator('#sheetBody .block:has(h3:has-text("Best per disc")) .row').count() === 2, 'the list shows the best throw for each disc');
+  check(await page.isHidden('.throwbar') && await page.evaluate(() => !LF.mode), 'saving closes the bar');
+  await page.locator('#sheetBody .row').first().click();
+  await page.waitForSelector('#sheet:not([hidden]) [data-act=del]');
+  check(/ft/.test(await page.textContent('#sheetHead h2')), 'a throw opens with its distance and draws on the map');
+
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));

@@ -29,7 +29,7 @@ COOKIE_SECURE = os.environ.get("LF_COOKIE_SECURE", "1") != "0"
 STATIC = os.environ.get("LF_STATIC")
 COOKIE = "lf_session"
 SESSION_DAYS = 90
-STORES = ("waypoints", "tracks", "drawings", "rounds")   # rounds: disc golf scorecards
+STORES = ("waypoints", "tracks", "drawings", "rounds", "throws")   # rounds / throws: disc golf
 LOGIN_FAILS, LOGIN_WINDOW = 8, 15 * 60
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
 

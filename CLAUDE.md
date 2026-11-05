@@ -74,7 +74,7 @@ site/                 the whole app: static files, no build step
                       LF.gpsAverageOf from draw.js) → fairway recorded from 'gps' fixes → Basket here saves a dg track (Hole N,
                       par, color #0f766e; tidy()'d; 11-point straight line if nothing was walked). LF.mode='course': a map tap
                       sets the tee/basket instead. Par ±, Redo hole / Undo last, Done (opens the folder). State in pref 'dgCourse',
-                      resumed after a reload. Next: part 2 scoring rounds, part 3 throw distances.
+                      resumed after a reload. Part 2: dgscore.js, part 3: dgthrow.js.
   js/dgscore.js       disc golf part 2, Score a round: LF.db store 'rounds' (DB v3; synced + backed up; server STORES has it)
                       { name, folder, format singles|teams, holes:[{n,par,trackId}], sides:[{id,name,members}], scores:{side:[…]},
                       hole, started, finished, live?, liveVersion?, pending? }. Course = a folder of dg holes, or unmapped N holes.
@@ -82,7 +82,13 @@ site/                 the whole app: static files, no build step
                       hole once per hole. Summary: grid + winner, Edit scores, Delete. Live rounds: Invite (approved account)
                       POST /api/rounds → short link to /#round=<id>; anyone with it joins (copy lv-<id>), no account. Each score
                       is a cell op (POST /api/rounds/<id> {scores,pars,finished}) queued in r.pending and retried; poll every 3 s
-                      with ?since=version; merge() = server copy + pending ops; own current hole per phone. Next: throw distances.
+                      with ?since=version; merge() = server copy + pending ops; own current hole per phone.
+  js/dgthrow.js       disc golf part 3, Measure a throw (+ > Disc golf; My throws lists them): LF.db store 'throws' (DB v4; synced
+                      + backed up) { from, to, dist (m), acc (m), disc, kind, at, name, hole?, course? }. Each end: raw GPS averaged
+                      (up to 20 s, early once 8+ readings agree to ±1.5 m), or a mapped tee pad within 12 m (its saved spot, ±1.5 m),
+                      or a map tap (±0.5 m). acc = both ends' errors combined (sqrt of squares). Live distance while walking.
+                      "Save & throw again from here" chains throws. List: best per disc, then all; a throw draws on the map.
+                      LF.mode='throw'.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

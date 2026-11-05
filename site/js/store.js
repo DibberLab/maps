@@ -18,11 +18,11 @@ LF.prefs = {
     if(k && k.startsWith('lf.')) o[k.slice(3)] = JSON.parse(localStorage.getItem(k)); } }catch(e){} return o; }
 };
 
-const DB_NAME = 'linefence', DB_VERSION = 3;   // 3: disc golf rounds
+const DB_NAME = 'linefence', DB_VERSION = 4;   // 3: disc golf rounds, 4: throws
 /* Every record has a string `id`. `areas` (offline area summaries) and `areadata`
    (their parcels and public land) can be downloaded again, so backups leave them out. */
-const STORES = ['waypoints', 'tracks', 'drawings', 'rounds', 'areas', 'areadata'];
-const BACKUP = ['waypoints', 'tracks', 'drawings', 'rounds'];   // backed up and synced to the account
+const STORES = ['waypoints', 'tracks', 'drawings', 'rounds', 'throws', 'areas', 'areadata'];
+const BACKUP = ['waypoints', 'tracks', 'drawings', 'rounds', 'throws'];   // backed up and synced to the account
 let opening = null;
 
 function open(){

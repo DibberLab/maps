@@ -40,6 +40,10 @@ async function teeNearby(){
   (await db.all('tracks')).filter(t => t.dg && t.points && t.points.length > 1).forEach(t => {
     const d = geo.dist(me, t.points[0]); if(d < 12 && (!best || d < best.d)) best = { d, t };
   });
+  // Public courses' tee pads too (as the same shape: points, dg.hole, folder).
+  (LF.discgolf ? await LF.discgolf.pub() : []).forEach(c => c.holes.forEach(h => {
+    const d = geo.dist(me, h.line[0]); if(d < 12 && (!best || d < best.d)) best = { d, t:{ points:h.line, dg:{ hole:h.n }, folder:c.name, name:'Hole ' + h.n } };
+  }));
   return best && best.t;
 }
 let nearTee = null;

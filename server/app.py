@@ -97,6 +97,13 @@ CREATE TABLE IF NOT EXISTS live_rounds (
   created INTEGER NOT NULL,
   updated INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS courses (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  data TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS login_fails (key TEXT NOT NULL, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS login_fails_key ON login_fails (key, ts);
 """
@@ -561,6 +568,75 @@ def change_live_round(rid):
 
 
 # ---------- Admin ----------
+
+# ---------- Public disc golf courses ----------
+# Admins add a course's layout (Menu > Disc golf courses > Add course); everyone sees it on the disc golf layer.
+COURSE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
+
+
+def _num(v, lo, hi):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
+
+
+def _clean_course(c):
+    """The course as stored, or None when it isn't one: {name, c:[lat,lng], holes:[{n, par, ft, line, anchors}], address, notes}."""
+    if not isinstance(c, dict) or not isinstance(c.get("name"), str) or not c["name"].strip():
+        return None
+    holes = c.get("holes")
+    if not isinstance(holes, list) or not (0 < len(holes) <= 54):
+        return None
+    out = []
+    for h in holes:
+        line = h.get("line") if isinstance(h, dict) else None
+        if not isinstance(line, list) or not (2 <= len(line) <= 300) or not all(
+                isinstance(p, list) and len(p) >= 2 and _num(p[0], -90, 90) and _num(p[1], -180, 180) for p in line):
+            return None
+        par = h.get("par") if _num(h.get("par"), 1, 9) else 3
+        ft = h.get("ft") if _num(h.get("ft"), 1, 5000) else None
+        anchors = [a for a in (h.get("anchors") or []) if isinstance(a, int) and 0 < a < len(line) - 1][:50]
+        out.append({"n": str(h.get("n") or len(out) + 1)[:6], "par": int(par), "ft": ft and int(ft),
+                    "line": [[round(p[0], 7), round(p[1], 7)] for p in line], "anchors": anchors})
+    pts = [p for h in out for p in h["line"]]
+    center = [round(sum(p[0] for p in pts) / len(pts), 6), round(sum(p[1] for p in pts) / len(pts), 6)]
+    text = lambda k, n: (c.get(k) or "").strip()[:n] if isinstance(c.get(k), str) else ""
+    return {"name": c["name"].strip()[:80], "c": center, "holes": out, "address": text("address", 120), "notes": text("notes", 1000)}
+
+
+@app.get("/api/courses")
+def list_courses():
+    rows = db().execute("SELECT id, data, updated FROM courses ORDER BY created").fetchall()
+    resp = jsonify(courses=[dict(json.loads(r["data"]), id=r["id"], updated=r["updated"]) for r in rows])
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.post("/api/courses")
+@needs("admin")
+def save_course():
+    b = body()
+    c = _clean_course(b.get("course"))
+    if not c:
+        return err("That isn't a course layout.")
+    cid = b.get("id")
+    if cid is not None:
+        if not isinstance(cid, str) or not COURSE_ID_RE.match(cid) or \
+                not db().execute("SELECT 1 FROM courses WHERE id = ?", (cid,)).fetchone():
+            return err("No such course.", 404)
+        db().execute("UPDATE courses SET data = ?, updated = ? WHERE id = ?", (json.dumps(c), now(), cid))
+    else:
+        cid = secrets.token_urlsafe(9)
+        db().execute("INSERT INTO courses VALUES (?, ?, ?, ?, ?)", (cid, current_user()["id"], json.dumps(c), now(), now()))
+    db().commit()
+    return jsonify(id=cid, course=c)
+
+
+@app.delete("/api/courses/<cid>")
+@needs("admin")
+def delete_course(cid):
+    db().execute("DELETE FROM courses WHERE id = ?", (cid,))
+    db().commit()
+    return jsonify(ok=True)
+
 
 @app.get("/api/admin/users")
 @needs("admin")

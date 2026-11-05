@@ -88,6 +88,18 @@ check(after["round"]["scores"] == {"a": [3, None], "b": [4, None]}, "two phones'
 check(stranger.get(f"/api/rounds/{lrid}?since={after['version']}").json.get("same") is True, "polling an unchanged round sends nothing new")
 check(J(stranger, "post", f"/api/rounds/{lrid}", {"scores": [{"side": "zz", "hole": 9, "value": 99}]}).json["round"]["scores"] == {"a": [3, None], "b": [4, None]}, "bad scores are ignored")
 check(stranger.get("/api/rounds/nope!").status_code == 404, "malformed round ids are refused")
+# Public disc golf courses: admins add them; anyone reads them.
+course = {"name": "Tjader Acres", "holes": [{"n": 1, "par": 3, "ft": 251, "line": [[45.7776, -92.4301], [45.7778, -92.4293]]},
+                                         {"n": 2, "par": 4, "line": [[45.7779, -92.4290], [45.7781, -92.4288], [45.7785, -92.4285]], "anchors": [1]}]}
+check(J(user, "post", "/api/courses", {"course": course}).status_code == 403, "only admins add courses")
+check(J(admin, "post", "/api/courses", {"course": {"name": "x", "holes": [{"line": [[999, 0], [0, 0]]}]}}).status_code == 400, "a bad layout is refused")
+cr = J(admin, "post", "/api/courses", {"course": course}).json
+pub = stranger.get("/api/courses").json["courses"]
+check(len(pub) == 1 and pub[0]["name"] == "Tjader Acres" and pub[0]["holes"][1]["anchors"] == [1] and pub[0]["holes"][0]["n"] == "1", "anyone sees the course and its holes")
+check(abs(pub[0]["c"][0] - 45.778) < 0.001, "the course pin is the middle of its holes")
+J(admin, "post", "/api/courses", {"id": cr["id"], "course": dict(course, name="Tjader Acres DGC")})
+check(stranger.get("/api/courses").json["courses"][0]["name"] == "Tjader Acres DGC", "an admin updates a course in place")
+check(J(admin, "delete", f"/api/courses/{cr['id']}", {}).status_code == 200 and stranger.get("/api/courses").json["courses"] == [], "an admin deletes a course")
 # Short links: anyone can make one; the same link gets the same code; following it redirects to the full view.
 h = "#map=17/45.80050/-92.40050&base=hyb&layers=parcels&share=AbCdEfGh1234"
 ln = J(stranger, "post", "/api/links", {"hash": h})

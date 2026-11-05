@@ -29,7 +29,8 @@ function totals(r, sideId){
 
 /* ---------- Start ---------- */
 async function start(){
-  const [cs, rounds] = await Promise.all([courses(), db.all('rounds')]);
+  const [cs, rounds, pubAll] = await Promise.all([courses(), db.all('rounds'), LF.discgolf ? LF.discgolf.pub() : []]);
+  const pubs = pubAll.filter(p => !cs.has('Disc golf / ' + p.name.replace(/\//g, '-')));   // public courses you haven't added to your map
   const open = rounds.filter(r => !r.finished).sort((a, b) => b.updated - a.updated);
   const past = rounds.filter(r => r.finished).sort((a, b) => b.finished - a.finished).slice(0, 12);
   const me = (LF.account.user() && LF.account.user().name) || 'Me';
@@ -43,8 +44,9 @@ async function start(){
     (open.length ? '<div class="block"><h3>In progress</h3><div class="rows">' + open.map(roundRow).join('') + '</div></div>' : '') +
     `<form class="edit" onsubmit="return false"><h3>New round</h3>
       <label>Course<select id="r-course">${Array.from(cs.keys()).sort().map(f => `<option value="${esc(f)}">${esc(LF.geo.folderPath(f).pop())} · ${cs.get(f).length} holes</option>`).join('')}
+        ${pubs.map(p => `<option value="pub:${esc(p.id)}">${esc(p.name)} · ${p.holes.length} holes</option>`).join('')}
         <option value="">Another course (not mapped)</option></select></label>
-      <div id="r-other"${cs.size ? ' hidden' : ''}><div class="row2"><label>Course name<input id="r-name" maxlength="60" placeholder="Course"></label>
+      <div id="r-other"${cs.size || pubs.length ? ' hidden' : ''}><div class="row2"><label>Course name<input id="r-name" maxlength="60" placeholder="Course"></label>
         <label>Holes<select id="r-holes">${[9, 18, 27].map(n => `<option${n === 18 ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div></div>
       <div class="lbl">Format</div>
       <div class="seg"><label><input type="radio" name="r-format" value="singles" checked> Singles</label><label><input type="radio" name="r-format" value="teams"> Teams</label></div>
@@ -69,9 +71,11 @@ async function start(){
         if(!sides.length){ flash('Add a player or team'); return; }
         const folder = $('r-course').value;
         let holes, name;
-        if(folder){ name = LF.geo.folderPath(folder).pop(); holes = cs.get(folder).map((t, i) => ({ n:+t.dg.hole || i + 1, par:+t.dg.par || 3, trackId:t.id })); }
+        const pc = folder.startsWith('pub:') && pubs.find(p => 'pub:' + p.id === folder);
+        if(pc){ name = pc.name; holes = pc.holes.map((h, i) => ({ n:+h.n || i + 1, par:+h.par || 3, line:h.line })); }
+        else if(folder){ name = LF.geo.folderPath(folder).pop(); holes = cs.get(folder).map((t, i) => ({ n:+t.dg.hole || i + 1, par:+t.dg.par || 3, trackId:t.id })); }
         else { name = $('r-name').value.trim() || 'Disc golf'; holes = Array.from({ length:+$('r-holes').value }, (_, i) => ({ n:i + 1, par:3 })); }
-        const r = { name, folder:folder || null, format, holes, sides, scores:Object.fromEntries(sides.map(s => [s.id, holes.map(() => null)])), hole:0, started:Date.now(), finished:null };
+        const r = { name, folder:pc ? null : folder || null, format, holes, sides, scores:Object.fromEntries(sides.map(s => [s.id, holes.map(() => null)])), hole:0, started:Date.now(), finished:null };
         prefs.set('dgPlayers', Array.from(new Set(sides.map(s => s.name).concat(prefs.get('dgPlayers', [])))).slice(0, 30));
         const saved = await db.put('rounds', r);
         card(saved); trackRound(saved);
@@ -92,8 +96,9 @@ async function start(){
 let shown = null;   // the round + hole the map was last moved to (so a score tap doesn't move it again)
 async function showHole(r){
   const h = r.holes[r.hole], t = h.trackId && await db.get('tracks', h.trackId);
-  if(!t) return null;
-  const ll = t.points.map(p => [p[0], p[1]]), key = r.id + ':' + r.hole;
+  const ll = t ? t.points.map(p => [p[0], p[1]]) : h.line;   // a public course's hole carries its own line
+  if(!ll || ll.length < 2) return null;
+  const key = r.id + ':' + r.hole;
   if(shown !== key){ shown = key; LF.fitVisible ? LF.fitVisible(L.latLngBounds(ll), 19) : map.fitBounds(L.latLngBounds(ll)); }
   LF.select.shape(ll, { color:DG, weight:5 });
   return geo.length(ll);

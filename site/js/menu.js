@@ -11,6 +11,7 @@ const ICON = {
   tracks:'<path d="M5 19c3-1 3-5 6-6s4 2 8-1"/><circle cx="5" cy="19" r="1.5"/><circle cx="19" cy="12" r="1.5"/>', line:'<path d="M4 18 10 8l5 6 5-9"/>',
   area:'<path d="M5 6 18 4l2 13-12 3z"/>', folder:'<path d="M3 7h6l2 2h10v10H3z"/>', offline:'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
   layers:'<path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/>', admin:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  basket:'<path d="M12 3v18M6 6h12M7 6l1.5 6h7L17 6M8 12l1 3h6l1-3M8 21h8"/>',
   user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>' };
 const svg = k => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 const item = (act, icon, label, extra, data) => `<button class="mi" data-m="${act}"${data ? ` data-v="${esc(data)}"` : ''}>${svg(icon)}<span>${esc(label)}</span>${extra != null ? `<span class="n">${extra}</span>` : ''}</button>`;
@@ -40,7 +41,7 @@ async function render(){
     item('line', 'line', 'Lines', c && c.line) + item('area', 'area', 'Areas', c && c.area) +
     (tree.length ? '<h3>Folders</h3><div class="mtree">' + tree.map(branch(0)).join('') + '</div>' : '') +
     '<h3>Map</h3>' + item('offline', 'offline', 'Offline areas') + item('layers', 'layers', 'Layers & base map') +
-    (u && u.role === 'admin' && ok ? item('admin', 'admin', 'Admin portal') : '') +
+    (u && u.role === 'admin' && ok ? '<h3>Admin</h3>' + item('dgcourses', 'basket', 'Disc golf courses') + item('admin', 'admin', 'Admin portal') : '') +
     '<p class="small menu-foot">Line Fence · property lines, public land and your own marks. Not a survey.</p>';
   menu.scrollTop = keep;
 }
@@ -66,6 +67,7 @@ body.addEventListener('click', e => {
   close();
   if(m === 'account') return LF.account.sheet();
   if(m === 'admin'){ location.href = '/admin/'; return; }
+  if(m === 'dgcourses') return LF.dgadmin.list();
   if(m === 'layers') return document.getElementById('layersBtn').click();
   if(m === 'offline') return LF.account.require('offline areas') && LF.offline.list();
   if(!LF.account.require('waypoints, tracks and drawings')) return;

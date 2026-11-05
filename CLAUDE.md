@@ -94,6 +94,17 @@ site/                 the whole app: static files, no build step
                       or a map tap (±0.5 m). acc = both ends' errors combined (sqrt of squares). Live distance while walking.
                       "Save & throw again from here" chains throws. List: best per disc, then all; a throw draws on the map.
                       LF.mode='throw'.
+  js/dgadmin.js       public disc golf courses (Menu > Admin > Disc golf courses; admins only). Server table courses:
+                      GET /api/courses (public) {courses:[{id, name, c, holes:[{n, par, ft, line, anchors}], address, notes, updated}]},
+                      POST /api/courses {course[, id]} and DELETE /api/courses/<id> (admin). Add course: name, pars, distances, a
+                      layout picture (screenshot) → the picture lies over the map (pane dgPicPane, CSS transform from C/mpp/rot)
+                      → tap tee, bends, basket per hole (kept in picture pixels) → Done sizes it from the listed distances
+                      (median ratio) → drag / pinch-turn / ⟲⟳ −+ to line it up with the aerial → Publish. The picture never
+                      leaves the phone. "Publish a course from my map" sends a folder of dg holes (updates the course with the
+                      same name, or the one it was copied from: track.fromCourse). discgolf.js merges published courses into the
+                      layer (replacing an OSM entry with the same name within 5 km, keeping its details); their sheet has Add to
+                      my map (tracks pc-<course>-<hole> in "Disc golf / <name>") and, for admins, Remove course. Score a round
+                      lists them (holes carry their own line); Measure a throw checks their tee pads.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

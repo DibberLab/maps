@@ -569,6 +569,60 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForSelector('#sheet:not([hidden]) [data-act=del]');
   check(/ft/.test(await page.textContent('#sheetHead h2')), 'a throw opens with its distance and draws on the map');
 
+  // 20. Admin: add a public course from a layout picture. Mark 2 holes (hole 2 with a bend), size from the distances,
+  //     drag and turn the picture, publish; everyone sees it; it shows in Score a round; Add to my map; publish back.
+  await page.goto('about:blank'); await page.goto(BASE + '#map=17/45.87/-92.60', { waitUntil:'domcontentloaded' });
+  await page.waitForFunction(() => window.LF && LF.dgadmin && LF.account.user());
+  await page.click('#menuBtn'); await page.click('.mi[data-m=dgcourses]');
+  await page.waitForSelector('#sheetBody [data-act=add]'); await page.click('#sheetBody [data-act=add]');
+  await page.fill('#a-name', 'Pine Test'); await page.fill('#a-pars', '3 4'); await page.fill('#a-fts', '200, 300');
+  check(/2 holes, par 7, 2 distances/.test(await page.textContent('#a-count')), 'the form counts holes and par as you type');
+  const png = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 600; c.height = 400; const x = c.getContext('2d');
+    x.fillStyle = '#3a6'; x.fillRect(0, 0, 600, 400); x.strokeStyle = '#fff'; x.lineWidth = 6; x.beginPath(); x.moveTo(100, 300); x.lineTo(250, 250); x.moveTo(300, 300); x.lineTo(400, 200); x.lineTo(500, 120); x.stroke();
+    return c.toDataURL('image/png').split(',')[1]; });
+  await page.setInputFiles('#a-pic', { name:'layout.png', mimeType:'image/png', buffer:Buffer.from(png, 'base64') });
+  await page.click('#sheetBody [data-act=next]');
+  await page.waitForSelector('.dgaddbar:not([hidden])');
+  check(await page.isVisible('img.dgpic') && /Hole 1 of 2 · Par 3 · 200 ft/.test(await page.textContent('.dgaddbar')), 'the picture lies over the map and asks for hole 1');
+  await at(0.35, 0.52); await at(0.45, 0.5);
+  await page.click('.dgaddbar [data-a=next]');
+  await at(0.5, 0.52); await at(0.58, 0.48); await at(0.66, 0.45);
+  check(JSON.stringify((await page.evaluate(() => LF.dgadmin.state())).holes) === '[2,3]', 'taps mark tee, bend and basket');
+  await page.click('.dgaddbar [data-a=next]');
+  const al = await page.evaluate(() => LF.dgadmin.state());
+  check(al.step === 'align' && (al.ft[0] - 200) * (al.ft[1] - 300) <= 0 && al.ft[0] > 100 && al.ft[1] < 600, 'Done sizes the picture from the listed distances: ' + al.ft.join(' / ') + ' ft');
+  // Drag the picture 60 px right, then turn it a step.
+  const cx = Math.round(vw.width * 0.5), cy = Math.round(vw.height * 0.45);
+  await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.move(cx + 30, cy, { steps:3 }); await page.mouse.move(cx + 60, cy, { steps:3 }); await page.mouse.up();
+  await page.click('.dgaddbar [data-a=rotr]');
+  const al2 = await page.evaluate(() => LF.dgadmin.state());
+  check(al2.C[1] > al.C[1] && Math.abs(al2.rot - 0.5) < 1e-9 && Math.abs(al2.ft[1] - al.ft[1]) <= 1, 'dragging moves the picture and the holes with it; ⟳ turns it');
+  await page.click('.dgaddbar [data-a=publish]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Pine Test")', { timeout:10000 });
+  const pubd = await page.evaluate(() => LF.api('GET', 'courses').then(r => r.courses.find(c => c.name === 'Pine Test')));
+  check(pubd && pubd.holes.length === 2 && pubd.holes[1].anchors.length === 1 && pubd.holes[1].par === 4 && pubd.holes[0].ft === 200, 'published with its holes, pars, distances and the bend');
+  check(await page.isHidden('.dgaddbar') && await page.evaluate(() => !LF.mode && !document.querySelector('img.dgpic')), 'publishing puts the picture away and opens the course');
+  const anon = await browser.newContext(); const ap = await anon.newPage();
+  await ap.goto(BASE, { waitUntil:'domcontentloaded' }); await ap.waitForFunction(() => window.LF && LF.discgolf);
+  check(await ap.evaluate(() => LF.discgolf.pub().then(l => l.some(c => c.name === 'Pine Test'))), 'anyone sees the published course, no account needed');
+  await anon.close();
+  await page.evaluate(() => LF.closeSheet());
+  await tool('dgscore'); await page.waitForSelector('#r-course');
+  check(await page.locator('#r-course option', { hasText:'Pine Test' }).count() === 1, 'Score a round offers the published course');
+  await page.evaluate(id => LF.discgolf.openPublic(id), pubd.id);
+  await page.waitForSelector('#sheetBody [data-act=copy]'); await page.click('#sheetBody [data-act=copy]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Disc golf / Pine Test")', { timeout:5000 }).catch(() => {});
+  const mine = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.folder === 'Disc golf / Pine Test').map(x => x.dg.hole + '/' + x.dg.par).sort().join(',')));
+  check(mine === '1/3,2/4', 'Add to my map copies it as disc golf holes: ' + mine);
+  await page.evaluate(() => LF.db.all('tracks').then(t => { const h = t.find(x => x.folder === 'Disc golf / Pine Test' && x.dg.hole === '1'); h.dg.par = '4'; return LF.db.put('tracks', h); }));
+  await page.click('#menuBtn'); await page.click('.mi[data-m=dgcourses]');
+  await page.waitForSelector('#pub-folder'); await page.selectOption('#pub-folder', 'Disc golf / Pine Test');
+  page.once('dialog', d => d.accept());
+  await page.click('#sheetBody [data-act=publish]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Pine Test")', { timeout:10000 }).catch(() => {});
+  const repub = await page.evaluate(() => LF.api('GET', 'courses').then(r => r.courses.filter(c => c.name === 'Pine Test')));
+  check(repub.length === 1 && repub[0].id === pubd.id && repub[0].holes[0].par === 4, 'publishing my edited copy updates the same course');
+
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));

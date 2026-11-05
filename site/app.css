@@ -398,6 +398,11 @@ button.brand .burger{margin-right:12px}
 .throwbar .row2{display:flex;gap:6px;margin-bottom:8px}
 .throwbar .row2 input,.throwbar .row2 select{flex:1;min-width:0;font:16px var(--body);padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:inherit}
 .throwbar .row2 select{flex:0 0 auto}
+/* Admin: add a course from a layout picture (dgadmin.js). */
+.leaflet-pane img.dgpic{position:absolute;left:0;top:0;transform-origin:50% 50%;max-width:none !important;max-height:none !important;pointer-events:none;user-select:none;
+  box-shadow:0 0 0 2px #e8590c}
+.coursebar .btn.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.dgaddbar .cb-btns .btn{flex:1 0 auto}
 
 /* Disc golf scoring (dgscore.js). */
 .pchips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}

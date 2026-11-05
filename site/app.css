@@ -392,3 +392,28 @@ button.brand .burger{margin-right:12px}
 .coursebar .btn{min-height:40px;padding:8px 11px}
 .coursebar .cb-btns .btn:first-child{flex:1 0 100%}
 .coursebar .btn.primary{background:#0f766e;border-color:#0f766e}
+
+/* Disc golf scoring (dgscore.js). */
+.pchips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+.pchip{display:inline-flex;align-items:center;gap:4px;background:var(--panel-2);border-radius:99px;padding:4px 4px 4px 12px;font-weight:600}
+.pchip button{border:0;background:transparent;color:var(--muted);font-size:14px;width:26px;height:26px;border-radius:50%;cursor:pointer}
+.small-btn{padding:6px 10px;min-height:32px;font-size:13px}
+.seg{display:flex;gap:16px;margin:4px 0 8px}
+.seg label{display:flex;align-items:center;gap:6px;font-weight:600}
+.scard{display:flex;flex-direction:column;gap:8px;margin:6px 0 10px}
+.srow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.sname{flex:1;min-width:0;display:flex;flex-direction:column}
+.sbtn{width:48px;height:48px;border-radius:50%;border:1px solid var(--line);background:var(--panel-2);font-size:24px;line-height:1;cursor:pointer;color:inherit}
+.sval{min-width:52px;height:52px;border-radius:10px;border:2px solid #0f766e;background:transparent;font:700 24px var(--display);color:inherit;cursor:pointer}
+.sval.empty{color:var(--muted);border-style:dashed}
+.sval.under{background:#0f766e;color:#fff}
+.sval.over{border-color:#b45309;color:#b45309}
+.sgrid-wrap{overflow-x:auto;margin:6px 0}
+.sgrid{border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sgrid th,.sgrid td{border:1px solid var(--line);padding:4px 6px;text-align:center}
+.sgrid td:first-child,.sgrid th:first-child{text-align:left;position:sticky;left:0;background:var(--panel)}
+.sgrid tr.par td{color:var(--muted)}
+.sgrid td.under{background:rgba(15,118,110,.18);font-weight:700}
+.sgrid td.over{color:#b45309}
+.winner{font:700 18px var(--display);margin:4px 0}
+.tag.live-tag{background:#c62828;color:#fff;padding:1px 6px;font-size:11px}

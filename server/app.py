@@ -29,7 +29,7 @@ COOKIE_SECURE = os.environ.get("LF_COOKIE_SECURE", "1") != "0"
 STATIC = os.environ.get("LF_STATIC")
 COOKIE = "lf_session"
 SESSION_DAYS = 90
-STORES = ("waypoints", "tracks", "drawings")
+STORES = ("waypoints", "tracks", "drawings", "rounds")   # rounds: disc golf scorecards
 LOGIN_FAILS, LOGIN_WINDOW = 8, 15 * 60
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
 
@@ -89,6 +89,14 @@ CREATE TABLE IF NOT EXISTS links (
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS links_ip ON links (ip, created);
+CREATE TABLE IF NOT EXISTS live_rounds (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  data TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS login_fails (key TEXT NOT NULL, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS login_fails_key ON login_fails (key, ts);
 """
@@ -484,6 +492,72 @@ def follow_link(code):
     resp = app.response_class(status=302)
     resp.headers["Location"] = "/" + (row["hash"] if row else "")   # an unknown code just opens the map
     return resp
+
+
+# ---------- Live disc golf rounds ----------
+# A round someone invites others to: everyone with the link (/#round=<id>) can see it and enter scores, no account
+# needed (the link is the key). Each score is its own small update, so two phones scoring at once never overwrite
+# each other; phones poll with ?since=<version> and get the round only when it changed.
+ROUND_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
+
+
+def _round(rid):
+    if not ROUND_ID_RE.match(rid):
+        return None
+    return db().execute("SELECT * FROM live_rounds WHERE id = ?", (rid,)).fetchone()
+
+
+@app.post("/api/rounds")
+@needs("approved")
+def start_live_round():
+    r = body().get("round")
+    if not isinstance(r, dict) or not isinstance(r.get("holes"), list) or not isinstance(r.get("sides"), list) \
+            or not (0 < len(r["holes"]) <= 54) or not (0 < len(r["sides"]) <= 24):
+        return err("That isn't a round.")
+    keep = {k: r.get(k) for k in ("name", "folder", "format", "holes", "sides", "scores", "started", "finished")}
+    rid = secrets.token_urlsafe(9)
+    db().execute("INSERT INTO live_rounds VALUES (?, ?, ?, 1, ?, ?)", (rid, current_user()["id"], json.dumps(keep), now(), now()))
+    db().commit()
+    return jsonify(id=rid, version=1)
+
+
+@app.get("/api/rounds/<rid>")
+def get_live_round(rid):
+    row = _round(rid)
+    if not row:
+        return err("This round was removed or the link is wrong.", 404)
+    since = request.args.get("since", default=0, type=int)
+    if since and since == row["version"]:
+        return jsonify(id=rid, version=row["version"], same=True)
+    return jsonify(id=rid, version=row["version"], round=json.loads(row["data"]))
+
+
+@app.post("/api/rounds/<rid>")
+def change_live_round(rid):
+    """Changes: [{side, hole, value}] scores (value null clears), [{hole, par}] pars, {finished: ms|null}."""
+    b = body()
+    conn = db()
+    conn.execute("BEGIN IMMEDIATE")
+    row = _round(rid)
+    if not row:
+        conn.rollback()
+        return err("This round was removed or the link is wrong.", 404)
+    r = json.loads(row["data"])
+    nholes, sides = len(r["holes"]), {s.get("id") for s in r["sides"] if isinstance(s, dict)}
+    for c in (b.get("scores") or [])[:500]:
+        h, sid, v = c.get("hole"), c.get("side"), c.get("value")
+        if sid in sides and isinstance(h, int) and 0 <= h < nholes and (v is None or (isinstance(v, int) and 1 <= v <= 20)):
+            r.setdefault("scores", {}).setdefault(sid, [None] * nholes)[h] = v
+    for c in (b.get("pars") or [])[:100]:
+        h, p = c.get("hole"), c.get("par")
+        if isinstance(h, int) and 0 <= h < nholes and isinstance(p, int) and 2 <= p <= 7:
+            r["holes"][h]["par"] = p
+    if "finished" in b and (b["finished"] is None or isinstance(b["finished"], (int, float))):
+        r["finished"] = b["finished"]
+    conn.execute("UPDATE live_rounds SET data = ?, version = version + 1, updated = ? WHERE id = ?", (json.dumps(r), now(), rid))
+    conn.commit()
+    v = conn.execute("SELECT version FROM live_rounds WHERE id = ?", (rid,)).fetchone()[0]
+    return jsonify(id=rid, version=v, round=r)
 
 
 # ---------- Admin ----------

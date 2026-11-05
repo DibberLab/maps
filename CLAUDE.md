@@ -75,6 +75,14 @@ site/                 the whole app: static files, no build step
                       par, color #0f766e; tidy()'d; 11-point straight line if nothing was walked). LF.mode='course': a map tap
                       sets the tee/basket instead. Par ±, Redo hole / Undo last, Done (opens the folder). State in pref 'dgCourse',
                       resumed after a reload. Next: part 2 scoring rounds, part 3 throw distances.
+  js/dgscore.js       disc golf part 2, Score a round: LF.db store 'rounds' (DB v3; synced + backed up; server STORES has it)
+                      { name, folder, format singles|teams, holes:[{n,par,trackId}], sides:[{id,name,members}], scores:{side:[…]},
+                      hole, started, finished, live?, liveVersion?, pending? }. Course = a folder of dg holes, or unmapped N holes.
+                      Card: one hole at a time, −/+ (tap the number = par; untouched = par on Next), hole par ±, map fits the
+                      hole once per hole. Summary: grid + winner, Edit scores, Delete. Live rounds: Invite (approved account)
+                      POST /api/rounds → short link to /#round=<id>; anyone with it joins (copy lv-<id>), no account. Each score
+                      is a cell op (POST /api/rounds/<id> {scores,pars,finished}) queued in r.pending and retried; poll every 3 s
+                      with ?since=version; merge() = server copy + pending ops; own current hole per phone. Next: throw distances.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload
@@ -118,7 +126,8 @@ site/                 the whole app: static files, no build step
   manifest.json, icons/   install-as-app (icons rendered from icons/icon.svg)
   vendor/             Leaflet 1.9.4 and Esri Leaflet 3.0.12, byte-identical to the official releases
 server/app.py         the API: accounts (pending/approved/disabled, user/admin), sessions (HttpOnly cookie, hashed tokens,
-                      90 days), sync, shared folders (table shares, UNIQUE user+folder), short links (table links), admin endpoints. JSON-only writes + Origin check against CSRF; login rate limit.
+                      90 days), sync, shared folders (table shares, UNIQUE user+folder), short links (table links), live disc golf rounds
+                      (table live_rounds; cell-level score updates, version for polling), admin endpoints. JSON-only writes + Origin check against CSRF; login rate limit.
 server/test_app.py    API tests (Flask test client)
 tools/run_all.sh      every test suite against a local site + API on fresh databases: bash tools/run_all.sh <venv>
 tools/smoke.js        end-to-end test in headless Chromium against the live services

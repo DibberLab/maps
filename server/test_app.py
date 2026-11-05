@@ -50,6 +50,7 @@ J(user, "post", "/api/sync", {"changes": [{"store": "waypoints", "id": "w1", "up
 d = user.get(f"/api/sync?since={seq}").json
 check(len(d["items"]) == 1 and d["items"][0]["deleted"], "deletes sync as tombstones")
 check(J(user, "post", "/api/sync", {"changes": [dict(wp, store="secrets")]}).json["accepted"] == 0, "unknown store ignored")
+check(J(user, "post", "/api/sync", {"changes": [{"store": "rounds", "id": "r1", "updated": 3000, "data": {"id": "r1", "name": "Fish Lake"}}]}).json["accepted"] == 1, "disc golf rounds sync")
 check(admin.get("/api/sync").json["items"] == [], "accounts don't see each other's items")
 
 check(user.get("/api/me/settings").json["settings"] is None, "no saved settings yet")
@@ -74,6 +75,18 @@ check(len(user.get("/api/shares").json["shares"]) == 1, "the owner can list thei
 check(J(admin, "delete", f"/api/shares/{sid}", {}).status_code == 404, "someone else can't stop the share")
 check(stranger.get("/api/shares/bad!id").status_code == 404, "malformed share ids are refused")
 check(J(user, "delete", f"/api/shares/{sid}", {}).status_code == 200 and stranger.get(f"/api/shares/{sid}").status_code == 404, "stopping a share removes the link")
+# Live rounds: one approved account starts it; anyone with the id sees and scores it; scores merge, never overwrite.
+lr = {"name": "Fish Lake", "format": "singles", "holes": [{"n": 1, "par": 3}, {"n": 2, "par": 4}],
+      "sides": [{"id": "a", "name": "Andy"}, {"id": "b", "name": "Ben"}], "scores": {"a": [None, None], "b": [None, None]}}
+check(J(stranger, "post", "/api/rounds", {"round": lr}).status_code == 401, "starting a shared round needs an account")
+lrid = J(user, "post", "/api/rounds", {"round": lr}).json["id"]
+check(stranger.get(f"/api/rounds/{lrid}").json["round"]["name"] == "Fish Lake", "anyone with the link sees the round")
+J(user, "post", f"/api/rounds/{lrid}", {"scores": [{"side": "a", "hole": 0, "value": 3}]})
+after = J(stranger, "post", f"/api/rounds/{lrid}", {"scores": [{"side": "b", "hole": 0, "value": 4}]}).json
+check(after["round"]["scores"] == {"a": [3, None], "b": [4, None]}, "two phones' scores merge instead of overwriting")
+check(stranger.get(f"/api/rounds/{lrid}?since={after['version']}").json.get("same") is True, "polling an unchanged round sends nothing new")
+check(J(stranger, "post", f"/api/rounds/{lrid}", {"scores": [{"side": "zz", "hole": 9, "value": 99}]}).json["round"]["scores"] == {"a": [3, None], "b": [4, None]}, "bad scores are ignored")
+check(stranger.get("/api/rounds/nope!").status_code == 404, "malformed round ids are refused")
 # Short links: anyone can make one; the same link gets the same code; following it redirects to the full view.
 h = "#map=17/45.80050/-92.40050&base=hyb&layers=parcels&share=AbCdEfGh1234"
 ln = J(stranger, "post", "/api/links", {"hash": h})

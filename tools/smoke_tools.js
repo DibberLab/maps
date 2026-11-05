@@ -463,6 +463,54 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Disc golf / Test Park")');
   check(await page.isHidden('.coursebar') && await page.evaluate(() => !LF.mode), 'Done closes the bar and opens the course folder');
 
+  // 17. Disc golf: score a round on the course just mapped (2 holes: par 3, par 4), me against Ben.
+  await page.evaluate(() => { if(!document.getElementById('sheet').hidden) LF.closeSheet(); });
+  await tool('dgscore');
+  await page.waitForSelector('#r-course');
+  await page.selectOption('#r-course', 'Disc golf / Test Park');
+  await page.fill('#r-add', 'Ben'); await page.click('#sheetBody [data-act=add]');
+  check(/Tester[\s\S]*Ben/.test(await page.textContent('#r-sides')), 'players added: ' + (await page.textContent('#r-sides')).replace(/✕/g, ' ').trim());
+  await page.click('#sheetBody [data-act=go]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1 · Par 3")');
+  const sideBtn = async (n, act) => { await page.locator('#sheetBody .srow').nth(n).locator(`[data-act=${act}]`).click(); await page.waitForTimeout(150); };
+  await sideBtn(0, 'par'); await sideBtn(0, 'inc');   // me: 4
+  await sideBtn(1, 'dec');                             // Ben: 2
+  check(/4/.test(await page.locator('#sheetBody .srow').nth(0).locator('.sval').textContent()) && /\+1/.test(await page.locator('#sheetBody .srow').nth(0).textContent()), 'scores and the running total against par update');
+  await page.click('#sheetBody [data-act=next]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 2 · Par 4")');
+  await sideBtn(1, 'inc');                             // Ben: 5; me left blank = par 4
+  await page.click('#sheetBody [data-act=finish]');
+  await page.waitForSelector('#sheetBody .winner');
+  check(/Ben wins with 7/.test(await page.textContent('#sheetBody .winner')), 'finishing shows the card and the winner: ' + await page.textContent('#sheetBody .winner'));
+  const rd = await page.evaluate(() => LF.db.all('rounds').then(r => r[0]));
+  check(rd && rd.finished && JSON.stringify(Object.values(rd.scores)) === '[[4,4],[2,5]]', 'the round is saved with every score: ' + JSON.stringify(rd && rd.scores));
+  await page.click('#sheetBack');
+  await page.waitForSelector('#sheetBody h3:has-text("Past rounds")', { timeout:5000 }).catch(() => {});
+  check(/Past rounds[\s\S]*Test Park/.test(await page.textContent('#sheetBody')), 'past rounds are listed');
+
+  // 18. A live round: I invite, Ben opens the link on his phone (no account), and both phones score it.
+  await page.selectOption('#r-course', 'Disc golf / Test Park');
+  await page.fill('#r-add', 'Ben'); await page.click('#sheetBody [data-act=add]');
+  await page.click('#sheetBody [data-act=go]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1")');
+  await page.click('#sheetBody [data-act=invite]');
+  await page.waitForSelector('#linkPop:not([hidden]) input');
+  const roundLink = await page.inputValue('#linkPop input');
+  await page.click('#linkPop [data-p=close]');
+  check(/\/api\/s\/[A-Za-z0-9]{6}$/.test(roundLink) && await page.isVisible('#sheetHead .live-tag'), 'Invite makes the round live and gives a short link: ' + roundLink.replace(/^https?:\/\/[^/]+/, ''));
+  const benCtx = await browser.newContext({ viewport:{ width:420, height:800 } });
+  const ben = await benCtx.newPage();
+  await ben.goto(roundLink, { waitUntil:'domcontentloaded' });
+  await ben.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1 · Par 3")', { timeout:15000 });
+  check(/Tester[\s\S]*Ben/.test(await ben.textContent('#sheetBody .scard')), 'Ben opens the link and sees the same round, no account needed');
+  await ben.locator('#sheetBody .srow').nth(1).locator('[data-act=dec]').click();   // Ben: 2
+  await page.waitForFunction(() => /^2$/.test(document.querySelectorAll('#sheetBody .srow')[1].querySelector('.sval').textContent.trim()), null, { timeout:10000 }).catch(() => {});
+  check(/^2$/.test((await page.locator('#sheetBody .srow').nth(1).locator('.sval').textContent()).trim()), 'Ben\'s score shows up on my phone');
+  await page.locator('#sheetBody .srow').nth(0).locator('[data-act=inc]').click();   // me: 4
+  await ben.waitForFunction(() => /^4$/.test(document.querySelectorAll('#sheetBody .srow')[0].querySelector('.sval').textContent.trim()), null, { timeout:10000 }).catch(() => {});
+  check(/^4$/.test((await ben.locator('#sheetBody .srow').nth(0).locator('.sval').textContent()).trim()), 'and mine shows up on his');
+  await benCtx.close();
+
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));

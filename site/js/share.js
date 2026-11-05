@@ -29,6 +29,7 @@ function parse(hash){
   const id = v => v && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null;
   if(id(q.get('share'))) out.share = q.get('share');   // a shared folder (server copy)
   if(id(q.get('item'))) out.item = q.get('item');       // …open on one of its items
+  if(id(q.get('round'))) out.round = q.get('round');    // a live disc golf round to join
   if(q.get('panel') === 'min') out.tucked = true;       // the info panel was tucked down
   return out;
 }

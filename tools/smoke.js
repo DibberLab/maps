@@ -116,6 +116,11 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(/Trails, roads/.test(rec) && /Thunderbird/.test(rec) && /Carry-In/.test(rec), 'tap on a MN water access shows it first: ' + rec.slice(0, 80));
   check(/Forest Road|Thunder Road/.test(rec), 'and the state forest road beside it');
   await page.screenshot({ path: path.join(OUT, 'smoke-mn-access.png') });
+  await page.goto('about:blank');
+  await page.goto(BASE + '#map=16/45.63025/-92.59687&pin=45.63025,-92.59687&base=img&layers=mntrails,mnmotor,mnroads,mnaccess');
+  await page.waitForFunction(() => !/Looking up/.test(document.querySelector('#sheetHead').textContent), null, { timeout: 40000 }).catch(() => {});
+  const wiRec = await page.evaluate(() => { const b = document.querySelector('#sheetBody .block'); return b ? b.textContent : ''; });
+  check(/Boat landing/.test(wiRec) && /Atlas Park/.test(wiRec), 'tap on a WI DNR boat landing shows it: ' + wiRec.slice(0, 80));
 
   // 5e. Phones: drag the panel down by its grab bar to tuck it (still open, title showing); a tap brings it back.
   const g = await page.locator('#sheetGrab').boundingBox();

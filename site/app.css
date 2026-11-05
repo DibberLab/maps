@@ -349,3 +349,13 @@ button.brand .burger{margin-right:12px}
 .backbtn{display:inline-flex;align-items:center;border:0;background:transparent;color:var(--blaze);font:600 15px/1 inherit;padding:6px 8px 6px 0;margin:0 0 2px;cursor:pointer;min-height:36px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .backbtn:hover{text-decoration:underline}
 .recsw{display:inline-block;width:18px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
+
+/* Editing on the map (items.js geoEditor): big touch targets, visible on any base map. */
+.edit-h{cursor:grab}
+.edit-h i{position:absolute;inset:7px;border-radius:50%;background:#fff;border:3px solid var(--blaze);box-shadow:0 1px 5px rgba(0,0,0,.5);
+  display:flex;align-items:center;justify-content:center;font:700 13px/1 var(--body);color:var(--blaze);font-style:normal}
+.edit-h.move i,.edit-h.edge i{inset:2px;background:var(--blaze);color:#fff;border-color:#fff;font-size:17px}
+.edit-wp .wp{outline:3px dashed #fff;outline-offset:3px;cursor:grab;animation:editbob 1.4s ease-in-out infinite}
+@keyframes editbob{50%{transform:translateY(-3px)}}
+@media (prefers-reduced-motion:reduce){.edit-wp .wp{animation:none}}
+.edit-hint{margin-top:6px;font-size:13px;color:var(--blaze);font-weight:600}

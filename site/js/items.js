@@ -140,12 +140,15 @@ function wpIcon(w){
   return L.divIcon({ className:'wp-wrap', iconSize:[32, 32], iconAnchor:[16, 16],
     html:`<div class="wp" style="background:${c};color:${inkOn(c)}">${glyph(w.icon)}</div><div class="wp-label">${esc(w.name)}</div>` });
 }
+let drawGen = 0;
 async function redraw(){
+  const gen = ++drawGen;   // a newer redraw wins; two at once would draw everything twice
   if(!(await db.ready())) return;
-  layer.clearLayers();
   // Items marked hidden (the eye in the list, or Hide on map) stay saved but aren't drawn.
-  const shown = r => !r.hidden;
+  const shown = r => !r.hidden && !(editing && editing.id === r.id);
   const [wps, drs, trs] = await Promise.all([db.all('waypoints'), db.all('drawings'), db.all('tracks')]).then(a => a.map(x => x.filter(shown)));
+  if(gen !== drawGen) return;
+  layer.clearLayers();
   drs.forEach(d => {
     const c = d.color || '#e8590c', o = lineOpts(d, 3);
     if(d.kind === 'line') L.polyline(d.points, o).on('click', tap('drawings', d)).addTo(layer);
@@ -166,6 +169,56 @@ async function redraw(){
   wps.forEach(w => L.marker([w.lat, w.lng], { pane:'savedMarkers', icon:wpIcon(w), title:w.name, riseOnHover:true, zIndexOffset:1000 })
     .on('click', tap('waypoints', w)).addTo(layer));
 }
+/* ---------- Moving and reshaping while editing ----------
+   While an item's edit panel is open it's drawn as an editable copy instead: a waypoint you can drag; a line or
+   area with a white dot on every corner and a ✥ handle that moves the whole shape; a circle with a centre handle
+   and an edge handle that sets the radius. Nothing is saved until Save; Cancel puts it back. Tracks are recorded
+   paths, so they stay put. */
+map.createPane('editPane'); map.getPane('editPane').style.zIndex = 470;
+map.getPane('editPane').style.pointerEvents = 'none';   // its canvas mustn't swallow taps; the handles take their own
+let editing = null;
+function geoEditor(store, r, color, onMove){
+  if(store === 'tracks') return null;
+  const g = L.layerGroup().addTo(map), st = { lat:r.lat, lng:r.lng, points:(r.points || []).map(p => [p[0], p[1]]), center:r.center && [r.center[0], r.center[1]], radius:r.radius };
+  editing = { id:r.id }; redraw();
+  const ll = x => [x.lat, x.lng];
+  const handle = (at, cls, glyphHtml) => L.marker(at, { pane:'editPane', draggable:true, autoPan:true, zIndexOffset:3000, keyboard:false,
+    icon:L.divIcon({ className:'edit-h ' + cls, iconSize:[36, 36], iconAnchor:[18, 18], html:`<i>${glyphHtml || ''}</i>` }) }).addTo(g);
+  if(store === 'waypoints'){
+    const m = L.marker([st.lat, st.lng], { pane:'editPane', draggable:true, autoPan:true, zIndexOffset:3000, icon:wpIcon(Object.assign({}, r, { color:color || r.color })) }).addTo(g);
+    L.DomUtil.addClass(m.getElement(), 'edit-wp');
+    m.on('drag', e => { const p = e.target.getLatLng(); st.lat = p.lat; st.lng = p.lng; onMove(); });
+  } else if(r.kind === 'circle'){
+    const shape = L.circle(st.center, { pane:'editPane', radius:st.radius, color, weight:3, dashArray:'6 5', fillOpacity:.1, interactive:false }).addTo(g);
+    const edgeAt = () => geo.dest(st.center, 90, st.radius);
+    const edge = handle(edgeAt(), 'edge', '↔');
+    const mid = handle(st.center, 'move', '✥');
+    mid.on('drag', e => { st.center = ll(e.target.getLatLng()); shape.setLatLng(st.center); edge.setLatLng(edgeAt()); onMove(); });
+    edge.on('drag', e => { st.radius = Math.max(5, geo.dist(st.center, ll(e.target.getLatLng()))); shape.setRadius(st.radius); onMove(); });
+    edge.on('dragend', () => edge.setLatLng(edgeAt()));
+  } else {
+    const closed = r.kind === 'area';
+    const shape = (closed ? L.polygon : L.polyline)(st.points, { pane:'editPane', color, weight:3, dashArray:'6 5', fillOpacity:.1, interactive:false }).addTo(g);
+    const mid = handle(geo.centroid(st.points), 'move', '✥');
+    const dots = st.points.map((p, i) => handle(p, 'vertex').on('drag', e => { st.points[i] = ll(e.target.getLatLng()); shape.setLatLngs(st.points); onMove(); })
+      .on('dragend', () => mid.setLatLng(geo.centroid(st.points))));
+    let from = null, orig = null;
+    mid.on('dragstart', e => { from = e.target.getLatLng(); orig = st.points.map(p => p.slice()); });
+    mid.on('drag', e => { const to = e.target.getLatLng(), dla = to.lat - from.lat, dln = to.lng - from.lng;
+      st.points = orig.map(p => [p[0] + dla, p[1] + dln]); shape.setLatLngs(st.points); dots.forEach((d, i) => d.setLatLng(st.points[i])); onMove(); });
+  }
+  const r6 = v => +(+v).toFixed(6);
+  return {
+    result(){
+      if(store === 'waypoints') return { lat:r6(st.lat), lng:r6(st.lng) };
+      if(r.kind === 'circle') return { center:[r6(st.center[0]), r6(st.center[1])], radius:Math.round(st.radius * 10) / 10 };
+      return { points:st.points.map(p => [r6(p[0]), r6(p[1])]) };
+    },
+    stats(){ return Object.assign({}, r, this.result()); },
+    stop(){ map.removeLayer(g); if(editing && editing.id === r.id){ editing = null; redraw(); } }
+  };
+}
+
 /* Many saves can land at once (an import); redraw once they settle. */
 let redrawTimer = null;
 db.onChange(() => { clearTimeout(redrawTimer); redrawTimer = setTimeout(redraw, 60); }); redraw();
@@ -266,8 +319,13 @@ function edit(store, r, isNew, back){
       <label class="btn">Add photo<input type="file" accept="image/*" multiple hidden data-act="addphoto"></label>` : ''}
     <div class="btnrow acts"><button type="button" class="btn primary" data-act="save">Save</button><button type="button" class="btn" data-act="cancel">Cancel</button></div>
   </form>`;
-  LF.showSheet(`<h2>${isNew ? 'New' : 'Edit'} ${kindName}</h2>` + (store === 'waypoints' ? `<div class="small mono">${geo.fmtLL([r.lat, r.lng])}</div>` : `<div class="small">${esc(stats(store, r).map(s => s[1]).slice(0, 2).join(' · '))}</div>`),
-    html, { pin:null, onClose: isNew ? () => LF.emit('drawCancelled') : null, onAct: async (act, el, e) => {
+  const hint = store === 'tracks' ? '' : store === 'waypoints' ? 'Drag it on the map to move it.'
+    : r.kind === 'circle' ? 'Drag ✥ to move the circle, ↔ to change its size.' : 'Drag a white dot to move that corner, or ✥ to move the whole shape.';
+  const sub = x => store === 'waypoints' ? geo.fmtLL([x.lat, x.lng]) : stats(store, x).map(s => s[1]).slice(0, 2).join(' · ');
+  let ged = null;
+  LF.showSheet(`<h2>${isNew ? 'New' : 'Edit'} ${kindName}</h2><div class="small${store === 'waypoints' ? ' mono' : ''}" id="f-where">${esc(sub(r))}</div>` +
+    (hint ? `<div class="edit-hint">${hint}</div>` : ''),
+    html, { pin:null, onClose:() => { if(ged) ged.stop(); if(isNew) LF.emit('drawCancelled'); }, onAct: async (act, el, e) => {
     const $ = id => document.getElementById(id);
     if(act === 'icon'){ icon = el.dataset.k; $('f-icons').innerHTML = iconBtns(); }
     if(act === 'color'){ color = el.dataset.c; $('f-colors').innerHTML = colorBtns(); if($('f-icons')) $('f-icons').innerHTML = iconBtns(); }
@@ -282,6 +340,7 @@ function edit(store, r, isNew, back){
       if(!LF.account.require(store === 'waypoints' ? 'waypoints' : store)) return;
       const rec = Object.assign({}, r, { name:$('f-name').value.trim() || defaultName(store, r), notes:$('f-notes').value.trim(), color:color || undefined });
       const folder = cleanFolder($('f-folder').value); if(folder) rec.folder = folder; else delete rec.folder;
+      if(ged) Object.assign(rec, ged.result());
       if(store === 'waypoints'){ if(icon !== r.icon) delete rec.iconName; rec.icon = icon; rec.photos = photos; }
       else { rec.lineStyle = $('f-style').value; rec.weight = +$('f-weight').value; if(rec.color !== r.color) delete rec.opacity; }
       try{
@@ -291,6 +350,8 @@ function edit(store, r, isNew, back){
       }catch(e){ flash(/quota/i.test(e && e.name) ? 'Storage is full. Remove some photos or saved items.' : 'Could not save: ' + (e.message || e), 5000); }
     }
   } });
+  ged = geoEditor(store, r, color || (store === 'waypoints' ? wpColor(r) : '#e8590c'), () => {
+    const w = document.getElementById('f-where'); if(w) w.textContent = sub(ged.stats()); });
   setTimeout(() => { const n = document.getElementById('f-name'); if(n && isNew && matchMedia('(pointer:fine)').matches) n.focus(); }, 50);
   allItems().then(items => { const dl = document.getElementById('f-folders'); if(dl) dl.innerHTML = folderNames(items).map(f => `<option value="${esc(f)}"></option>`).join(''); });
 }

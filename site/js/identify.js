@@ -54,26 +54,37 @@ const inWI = ll => ll.lat>42.4 && ll.lat<47.4 && ll.lng>-92.95 && ll.lng<-86.2;
 const inMN = ll => ll.lat>43.4 && ll.lat<49.5 && ll.lng>-97.3 && ll.lng<-89.4;
 /* ---------- MN DNR trails, forest roads and water accesses near the tap ----------
    Only the layers that are switched on are asked, within about 14 screen pixels (more for access dots). */
-const REC_LAYERS = { mntrails:['mnStateTrails', 'mnHunterTrails'], mnmotor:['mnOhv', 'mnSnowmobile'], mnroads:['mnForestRoads'], mnaccess:['mnAccess'] };
+const REC_LAYERS = { mntrails:['mnStateTrails', 'mnHunterTrails', 'wiStateTrails', 'wiIceAge', 'wiNct'], mnmotor:['mnOhv', 'mnSnowmobile', 'wiRoadsAtvSnow', 'wiRoadsAtv', 'wiRoadsSnow'],
+  mnroads:['mnForestRoads', 'wiRoadsCar'], mnaccess:['mnAccess', 'wiBoat'] };
 const REC_FIELDS = {
   mnStateTrails:['trail_name','alt_name','use_hike','use_hiking','use_horse','use_bike','use_mntbik','use_inline','use_wntrhi','use_snosho','use_atvcl1','use_atvcl2','use_ohm','use_orv','use_wcftm','use_wcftnm','surfacetyp','width'],
   mnHunterTrails:['trail_name','unit_name','area_name','lmiles','phone','comments'],
   mnOhv:['trail_name','segment_name','surface_type','trail_width','atv_class_1','atv_class_2','off_highway_motorcycle','off_road_vehicle','road_class','miles','web_site'],
   mnSnowmobile:['trail_name','trail_num','owner_type','maint_by','public_poc','public_pho','pocwebsite','miles'],
   mnForestRoads:['road_name','road_num','road_class','forest_area','miles'],
-  mnAccess:['access_name','lake_name','launch_type','ramp_surface','number_of_ramps','number_of_docks','trailer_parking_spaces_non_ada','car_parking_spaces_non_ada','number_of_toilets','administrator','directions','alerts','unique_swas_id']
+  mnAccess:['access_name','lake_name','launch_type','ramp_surface','number_of_ramps','number_of_docks','trailer_parking_spaces_non_ada','car_parking_spaces_non_ada','number_of_toilets','administrator','directions','alerts','unique_swas_id'],
+  wiStateTrails:['TRAIL_NAME','TRAIL_SEGMENT_NAME','SURFACE_TYPE','TRAIL_MANAGER','FEE','STATUS','HIKE_WALK','BIKE_TOUR','BIKE_OFFROAD','HORSE','INLINE_SKATE','SNOWSHOE',
+    'XC_SKI_GROOMED_CLASSIC','XC_SKI_GROOMED_SKATE','XC_SKI_UNGROOMED','SNOWMOBILE','ATV_SUMMER','ATV_WINTER','UTV_SUMMER','UTV_WINTER','OHM'],
+  wiIceAge:['OBJECTID'], wiNct:['OBJECTID'],
+  wiRoadsCar:['LOCAL_NAME','ROAD_PUBLIC_USE','DATE_OPEN_FROM','DATE_OPEN_TO','NR44_ROAD_TYPE','MATERIAL_TYPE_NAME','ROAD_MAINTPROG_DESC_TEXT'],
+  wiRoadsAtvSnow:['*'], wiRoadsAtv:['*'], wiRoadsSnow:['*'],
+  wiBoat:['LMS_BOAT_LANDING_NAME','WATERBODY_NAME_TEXT','LANDING_TYPE_CODE','RAMP_TYPE_CODE','ADA_ACCESSIBLE_FEATURE_CODE','OWNERSHIP_NAME_TEXT','OWNERSHIP_MANAGER_NAME_TEXT','OWNERSHIP_MANAGER_PHONE_TEXT','COUNTY_NAME_TEXT']
 };
+const REC_STATE = k => k.slice(0, 2);   // 'mn…' or 'wi…'
+const mmdd = v => { const m = /^(\d\d)(\d\d)$/.exec(String(v || '')); return m ? new Date(2000, +m[1] - 1, +m[2]).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : null; };
 function recLookup(ll){
   const mpp = 156543.03 * Math.cos(ll.lat * Math.PI / 180) / Math.pow(2, map.getZoom());
-  const keys = Object.entries(REC_LAYERS).filter(([k]) => on[k] && map.getZoom() >= 10).flatMap(([, v]) => v);
+  const states = (inMN(ll) ? ['mn'] : []).concat(inWI(ll) ? ['wi'] : []);
+  const keys = Object.entries(REC_LAYERS).filter(([k]) => on[k] && map.getZoom() >= 10).flatMap(([, v]) => v).filter(k => states.includes(REC_STATE(k)));
   if(!keys.length) return null;
-  return Promise.all(keys.map(key => query(SRC[key], ll, REC_FIELDS[key], { nearby:Math.min(400, Math.max(12, mpp * (key === 'mnAccess' ? 22 : 14))) })
+  return Promise.all(keys.map(key => query(SRC[key], ll, REC_FIELDS[key], { where:LF.REC_WHERE[key],
+      nearby:Math.min(400, Math.max(12, mpp * (/Access|Boat/.test(key) ? 22 : 14))) })
     .then(q => ({ err:q.err, results:q.features.slice(0, 3).map(f => ({ key, p:f.properties })) }))))
     .then(all => ({ err:all.every(a => a.err), results:[].concat(...all.map(a => a.results)) }));
 }
 const yes = v => v === 1 || v === '1' || /^(x|y|yes)$/i.test(String(v || '').trim());
 function recBlock(x){
-  const p = x.p, R = LF.REC[x.key], sw = `<span class="recsw" style="border-color:${R.color}${R.dash ? ';border-style:dashed' : ''}"></span>`;
+  const p = x.p, R = Object.assign({}, LF.REC[x.key], x.label ? { label:x.label } : {}), sw = `<span class="recsw" style="border-color:${R.color}${R.dash ? ';border-style:dashed' : ''}"></span>`;
   let name = '', rowsOut = [], uses = [], link = '';
   if(x.key === 'mnStateTrails'){
     name = p.trail_name; rowsOut = [['Also called', p.alt_name], ['Surface', p.surfacetyp], ['Width', p.width]];
@@ -96,6 +107,28 @@ function recBlock(x){
     name = numOnly ? 'Forest Road ' + (p.road_num || '') : p.road_name;
     rowsOut = [['Road number', numOnly ? null : p.road_num], ['Class', p.road_class], ['State forest area', p.forest_area]];
     link = `<span class="small">${min ? 'Minimum maintenance: not maintained for regular cars; may be rough, wet or closed seasonally.' : 'Maintained state forest road.'} ATV rules depend on the forest's classification.</span>`;
+  } else if(x.key === 'wiStateTrails'){
+    name = p.TRAIL_NAME; rowsOut = [['Segment', p.TRAIL_SEGMENT_NAME], ['Surface', p.SURFACE_TYPE], ['Managed by', p.TRAIL_MANAGER],
+      ['Trail pass', yes(p.FEE) ? 'Required (state trail pass)' : null], ['Status', /open/i.test(p.STATUS || '') ? null : p.STATUS]];
+    uses = [['Hiking', p.HIKE_WALK], ['Biking', p.BIKE_TOUR], ['Mountain bike', p.BIKE_OFFROAD], ['Horses', p.HORSE], ['Skating', p.INLINE_SKATE], ['Snowshoe', p.SNOWSHOE],
+      ['Ski (classic)', p.XC_SKI_GROOMED_CLASSIC], ['Ski (skate)', p.XC_SKI_GROOMED_SKATE], ['Ski (ungroomed)', p.XC_SKI_UNGROOMED], ['Snowmobile', p.SNOWMOBILE],
+      ['ATV (summer)', p.ATV_SUMMER], ['ATV (winter)', p.ATV_WINTER], ['UTV (summer)', p.UTV_SUMMER], ['UTV (winter)', p.UTV_WINTER], ['Off-road motorcycle', p.OHM]];
+    link = '<a href="https://dnr.wisconsin.gov/topic/parks/trails" target="_blank" rel="noopener">State trails (WI DNR)</a>';
+  } else if(x.key === 'wiIceAge' || x.key === 'wiNct'){
+    name = R.label;
+    link = x.key === 'wiIceAge' ? '<a href="https://www.iceagetrail.org/" target="_blank" rel="noopener">Ice Age Trail Alliance</a>'
+      : '<a href="https://northcountrytrail.org/" target="_blank" rel="noopener">North Country Trail Association</a>';
+  } else if(/^wiRoads/.test(x.key)){
+    name = p.LOCAL_NAME ? titleCase(p.LOCAL_NAME) + ' road' : R.label;
+    const open = mmdd(p.DATE_OPEN_FROM) && mmdd(p.DATE_OPEN_TO) ? mmdd(p.DATE_OPEN_FROM) + ' to ' + mmdd(p.DATE_OPEN_TO) : null;
+    rowsOut = [['Open', p.ROAD_PUBLIC_USE ? p.ROAD_PUBLIC_USE + (open ? ', ' + open : '') : open], ['Road type', p.NR44_ROAD_TYPE], ['Surface', p.MATERIAL_TYPE_NAME],
+      ['Managed by', String(p.ROAD_MAINTPROG_DESC_TEXT || '').replace(/^\w+ = /, '') || null]];
+    link = '<span class="small">Seasonal dates and closures can change; check signs at the gate.</span>';
+  } else if(x.key === 'wiBoat'){
+    name = p.LMS_BOAT_LANDING_NAME || 'Boat landing';
+    rowsOut = [['Water', p.WATERBODY_NAME_TEXT], ['Launch', /ramp/i.test(p.LANDING_TYPE_CODE || '') ? 'Ramp' : titleCase(p.LANDING_TYPE_CODE)], ['Ramp', /other|unknown/i.test(p.RAMP_TYPE_CODE || '') ? null : p.RAMP_TYPE_CODE],
+      ['Accessible (ADA)', p.ADA_ACCESSIBLE_FEATURE_CODE === 'Yes' ? 'Yes' : null], ['Run by', p.OWNERSHIP_MANAGER_NAME_TEXT || titleCase(p.OWNERSHIP_NAME_TEXT)], ['Phone', p.OWNERSHIP_MANAGER_PHONE_TEXT], ['County', p.COUNTY_NAME_TEXT]];
+    link = '<a href="https://dnr.wisconsin.gov/topic/Boat" target="_blank" rel="noopener">Boating (WI DNR)</a>';
   } else if(x.key === 'mnAccess'){
     name = p.access_name || 'Water access'; rowsOut = [['Water', p.lake_name], ['Launch', p.launch_type], ['Ramp', /unknown/i.test(p.ramp_surface || '') ? null : [p.number_of_ramps > 0 ? p.number_of_ramps + '×' : '', p.ramp_surface].filter(Boolean).join(' ')],
       ['Docks', p.number_of_docks], ['Trailer parking', p.trailer_parking_spaces_non_ada], ['Car parking', p.car_parking_spaces_non_ada], ['Toilets', p.number_of_toilets],
@@ -214,7 +247,7 @@ async function inspect(ll, opts){
     wiclosed: inWI(ll) ? identify(SRC.wiClosed, ll) : null,
     wimfl: inWI(ll) && on.wimfl ? query(SRC.wiMfl, ll, MFL_FIELDS, { nearby:300, where:'AC_OP_PLS > 0' }).then(mflResults) : null,
     mndnr: inMN(ll) ? both(identify(SRC.mnDnr, ll, 'visible:' + LF.MN_DNR_LAYER, true), identify(SRC.mnWia, ll, 'visible', true)) : null,
-    mnrec: inMN(ll) ? recLookup(ll) : null
+    rec: inMN(ll) || inWI(ll) ? recLookup(ll) : null
   };
   const r = {}; await Promise.all(Object.entries(jobs).map(async([k,p])=>{ r[k] = p ? await p : null; }));
   if(seq !== clickSeq) return;
@@ -374,17 +407,29 @@ function render(ll, r, savedArea){
     const key = label + JSON.stringify(Object.entries(x.attributes || {}).filter(([k]) => !SKIP.test(k.replace(/\s/g,'_'))));
     if(seen.has(key)) return false; seen.add(key); return true; });
   let recHtml = '';   // shown first: a tap on a trail or access dot is about that
-  if(r.mnrec && r.mnrec.results.length){
+  if(r.rec && r.rec.results.length){
     // Access sites first (a tap on a dot), then trails and roads; one entry per name.
-    const seenRec = new Set(), recs = r.mnrec.results.slice().sort((a, b) => (b.key === 'mnAccess') - (a.key === 'mnAccess'))
-      .filter(x => { const k = x.key + (x.p.trail_name || x.p.road_name || x.p.road_num || x.p.access_name || x.p.unique_swas_id || Math.random());
+    // WI DNR lists a road once per kind of vehicle allowed on it: merge those into one entry naming them all.
+    const motor = new Map(), merged = [];
+    r.rec.results.forEach(x => {
+      if(!/^wiRoads(AtvSnow|Atv|Snow)$/.test(x.key)){ merged.push(x); return; }
+      const id = x.p.ROAD_SEQ_NO || x.p.LOCAL_NAME || Math.random();
+      if(!motor.has(id)){ const m = { key:'wiRoadsAtvSnow', p:Object.assign({}, x.p), allow:new Set() }; motor.set(id, m); merged.push(m); }
+      const a = motor.get(id).allow;
+      if(x.key !== 'wiRoadsSnow'){ a.add('ATVs'); }
+      if(x.key === 'wiRoadsAtvSnow'){ a.add('UTVs'); }
+      if(x.key !== 'wiRoadsAtv'){ a.add('snowmobiles'); }
+    });
+    merged.forEach(m => { if(m.allow){ const l = ['ATVs', 'UTVs', 'snowmobiles'].filter(v => m.allow.has(v)); m.label = 'DNR road open to ' + (l.length > 1 ? l.slice(0, -1).join(', ') + ' & ' + l[l.length - 1] : l[0]); } });
+    const seenRec = new Set(), recs = merged.sort((a, b) => /Access|Boat/.test(b.key) - /Access|Boat/.test(a.key))
+      .filter(x => { const k = x.key + (x.p.trail_name || x.p.road_name || x.p.road_num || x.p.access_name || x.p.unique_swas_id || x.p.TRAIL_NAME || x.p.LOCAL_NAME || x.p.LMS_BOAT_LANDING_NAME || (/wiIceAge|wiNct/.test(x.key) ? '' : Math.random()));
         if(seenRec.has(k)) return false; seenRec.add(k); return true; });
     recHtml = '<div class="block"><h3>Trails, roads &amp; water access</h3>' + recs.slice(0, 5).map(recBlock).join('') + '</div>';
   }
   if(uniq.length){
     html += '<div class="block"><h3>State agency records</h3>' + uniq.slice(0,6).map(([label,x])=>dnrBlock(label,x)).join('') + '</div>';
   }
-  const NAMES = { padus:'PAD-US public land', widnr:'WI DNR lands', wiclosed:'WI closed areas', wimfl:'WI MFL/FCL', mndnr:'MN DNR lands', mncov:'MN county coverage', mnrec:'MN trails & accesses' };
+  const NAMES = { padus:'PAD-US public land', widnr:'WI DNR lands', wiclosed:'WI closed areas', wimfl:'WI MFL/FCL', mndnr:'MN DNR lands', mncov:'MN county coverage', rec:'Trails & accesses' };
   const failed = Object.keys(NAMES).filter(k => r[k] && r[k].err);
   if(failed.length) html += `<p class="note">Did not load: ${failed.map(k => NAMES[k]).join(', ')}. Tap again to retry.</p>`;
 

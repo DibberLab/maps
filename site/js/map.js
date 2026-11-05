@@ -22,7 +22,17 @@ const SRC = LF.SRC = {
   mnOhv:         'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/trans_ohv_trails_mn/MapServer/0',
   mnSnowmobile:  'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/trans_snowmobile_trails_mn/MapServer/0',
   mnForestRoads: 'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/trans_state_forest_roads/MapServer/0',
-  mnAccess:      'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/struc_water_access_sites/MapServer/0'
+  mnAccess:      'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/struc_water_access_sites/MapServer/0',
+  /* WI DNR: state trails (with allowed uses), the Ice Age and North Country Scenic Trails, DNR roads by the vehicles
+     allowed on them, and boat access sites. */
+  wiStateTrails: 'https://dnrmaps.wi.gov/arcgis/rest/services/LF_DML/LF_DNR_REC_OPPS_WTM_Ext/MapServer/1',
+  wiIceAge:      'https://dnrmaps.wi.gov/arcgis/rest/services/LF_DML/LF_DNR_REC_OPPS_WTM_Ext/MapServer/2',
+  wiNct:         'https://dnrmaps.wi.gov/arcgis/rest/services/LF_DML/LF_DNR_REC_OPPS_WTM_Ext/MapServer/3',
+  wiRoadsCar:    'https://dnrmaps.wi.gov/arcgis/rest/services/DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext/MapServer/1',
+  wiRoadsAtvSnow:'https://dnrmaps.wi.gov/arcgis/rest/services/DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext/MapServer/2',
+  wiRoadsAtv:    'https://dnrmaps.wi.gov/arcgis/rest/services/DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext/MapServer/3',
+  wiRoadsSnow:   'https://dnrmaps.wi.gov/arcgis/rest/services/DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext/MapServer/4',
+  wiBoat:        'https://dnrmaps.wi.gov/arcgis2/rest/services/PR_Recreation/PR_Boat_Access_Shore_Fishing_WTM_Ext/MapServer/2'
 };
 /* How each MN trail / road / access layer is drawn; identify.js shares these for tap details. */
 const REC = LF.REC = {
@@ -31,8 +41,17 @@ const REC = LF.REC = {
   mnOhv:         { color:'#c62828', dash:'9 5', label:'ATV / OHV trail' },
   mnSnowmobile:  { color:'#1565c0', dash:'2 6', label:'Snowmobile trail' },
   mnForestRoads: { color:'#795548', dash:null, label:'State forest road' },
-  mnAccess:      { color:'#0277bd', label:'Water access' }
+  mnAccess:      { color:'#0277bd', label:'Water access' },
+  wiStateTrails: { color:'#2e7d32', dash:null, label:'State trail' },
+  wiIceAge:      { color:'#00695c', dash:'12 4', label:'Ice Age National Scenic Trail' },
+  wiNct:         { color:'#00695c', dash:'12 4', label:'North Country National Scenic Trail' },
+  wiRoadsCar:    { color:'#795548', dash:null, label:'DNR road open to vehicles' },
+  wiRoadsAtvSnow:{ color:'#c62828', dash:'9 5', label:'DNR road open to ATV/UTV & snowmobiles' },
+  wiRoadsAtv:    { color:'#c62828', dash:'9 5', label:'DNR road open to ATVs' },
+  wiRoadsSnow:   { color:'#1565c0', dash:'2 6', label:'DNR road open to snowmobiles' },
+  wiBoat:        { color:'#0277bd', label:'Boat landing' }
 };
+LF.REC_WHERE = { wiBoat:"ABANDON_FLAG = 'No'" };
 LF.MN_DNR_LAYER = 3;
 const PARCEL_ZOOM = LF.PARCEL_ZOOM = 15;
 const prefs = LF.prefs;
@@ -213,7 +232,8 @@ map.createPane('recPane'); map.getPane('recPane').style.zIndex = 430; map.getPan
 const recWidth = () => map.getZoom() >= 14 ? 3.2 : 2.2;
 /* One request per layer: the white casing copies each feature the coloured layer loads (into a pane just below it). */
 function cased(key, fields, style){
-  const fl = L.esri.featureLayer({ url:SRC[key], pane:'recPane', minZoom:10, interactive:false, simplifyFactor:0.6, precision:5, fields, style });
+  const fl = L.esri.featureLayer(Object.assign({ url:SRC[key], pane:'recPane', minZoom:10, interactive:false, simplifyFactor:0.6, precision:5, fields, style },
+    LF.REC_WHERE[key] ? { where:LF.REC_WHERE[key] } : {}));
   const cas = L.layerGroup(), byId = new Map();
   const caseStyle = () => ({ color:'#fff', weight:recWidth() + 3, opacity:map.getZoom() >= 10 ? .75 : 0, lineCap:'round', lineJoin:'round' });
   fl.on('createfeature addfeature', e => { if(byId.has(e.feature.id)) return;
@@ -224,14 +244,22 @@ function cased(key, fields, style){
 }
 const recLine = key => () => ({ color:REC[key].color, weight:recWidth(), dashArray:REC[key].dash, opacity:.95, lineCap:'round' });
 const roadStyle = f => ({ color:REC.mnForestRoads.color, weight:recWidth(), dashArray:/minimum/i.test(f.properties.road_class || '') ? '10 6' : null, opacity:.95 });
+const wiRoadStyle = f => ({ color:REC.wiRoadsCar.color, weight:recWidth(), dashArray:/season/i.test(f.properties.ROAD_PUBLIC_USE || '') ? '10 6' : null, opacity:.95 });
+const accessDot = (ll, trailer, color) => L.circleMarker(ll, { pane:'recPane', interactive:false, radius:trailer ? 6.5 : 5, color:'#fff', weight:2,
+  fillColor:trailer ? color : '#26a69a', fillOpacity:1 });
 const layers = LF.layers = {
   terrain,
-  mntrails: L.layerGroup([...cased('mnStateTrails', ['objectid'], recLine('mnStateTrails')), ...cased('mnHunterTrails', ['objectid'], recLine('mnHunterTrails'))]),
-  mnmotor: L.layerGroup([...cased('mnOhv', ['objectid'], recLine('mnOhv')), ...cased('mnSnowmobile', ['objectid'], recLine('mnSnowmobile'))]),
-  mnroads: L.layerGroup(cased('mnForestRoads', ['objectid', 'road_class'], roadStyle)),
-  mnaccess: L.esri.featureLayer({ url:SRC.mnAccess, pane:'recPane', minZoom:10, interactive:false, fields:['objectid', 'launch_type'],
-    pointToLayer:(f, ll) => L.circleMarker(ll, { pane:'recPane', interactive:false, radius:/trailer/i.test(f.properties.launch_type || '') ? 6.5 : 5,
-      color:'#fff', weight:2, fillColor:/trailer/i.test(f.properties.launch_type || '') ? REC.mnAccess.color : '#26a69a', fillOpacity:1 }) }),
+  // These four switches cover both states (the keys keep their first names so saved settings carry over).
+  mntrails: L.layerGroup([...cased('mnStateTrails', ['objectid'], recLine('mnStateTrails')), ...cased('mnHunterTrails', ['objectid'], recLine('mnHunterTrails')),
+    ...cased('wiStateTrails', ['OBJECTID'], recLine('wiStateTrails')), ...cased('wiIceAge', ['OBJECTID'], recLine('wiIceAge')), ...cased('wiNct', ['OBJECTID'], recLine('wiNct'))]),
+  mnmotor: L.layerGroup([...cased('mnOhv', ['objectid'], recLine('mnOhv')), ...cased('mnSnowmobile', ['objectid'], recLine('mnSnowmobile')),
+    ...cased('wiRoadsAtvSnow', ['OBJECTID'], recLine('wiRoadsAtvSnow')), ...cased('wiRoadsAtv', ['OBJECTID'], recLine('wiRoadsAtv')), ...cased('wiRoadsSnow', ['OBJECTID'], recLine('wiRoadsSnow'))]),
+  mnroads: L.layerGroup([...cased('mnForestRoads', ['objectid', 'road_class'], roadStyle), ...cased('wiRoadsCar', ['OBJECTID', 'ROAD_PUBLIC_USE'], wiRoadStyle)]),
+  mnaccess: L.layerGroup([
+    L.esri.featureLayer({ url:SRC.mnAccess, pane:'recPane', minZoom:10, interactive:false, fields:['objectid', 'launch_type'],
+      pointToLayer:(f, ll) => accessDot(ll, /trailer/i.test(f.properties.launch_type || ''), REC.mnAccess.color) }),
+    L.esri.featureLayer({ url:SRC.wiBoat, pane:'recPane', minZoom:10, interactive:false, fields:['OBJECTID', 'LANDING_TYPE_CODE'], where:LF.REC_WHERE.wiBoat,
+      pointToLayer:(f, ll) => accessDot(ll, /ramp/i.test(f.properties.LANDING_TYPE_CODE || ''), REC.wiBoat.color) })]),
   padus: L.esri.featureLayer({ url:SRC.padus, pane:'publicPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5,
     fields:['OBJECTID','Pub_Access'],
     style: f => { const a = ACCESS[f.properties.Pub_Access]; const c = a && a[2] ? css(a[2]) : '#888';

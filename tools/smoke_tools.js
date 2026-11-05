@@ -270,6 +270,46 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   const left = await page.evaluate(async () => (await LF.db.all('waypoints')).length + (await LF.db.all('drawings')).length + (await LF.db.all('tracks')).length);
   check(left === 0, 'bulk delete removes them all: ' + left + ' left');
 
+  // 11. Edit lets you drag things to a new spot: a waypoint, an area's corner, and the whole area (✥).
+  await page.evaluate(async () => { if(document.getElementById('sheet').hidden === false) LF.closeSheet();
+    LF.map.setView([45.80, -92.40], 16, { animate:false });
+    await LF.db.put('waypoints', { id:'drag-wp', name:'Drag me', icon:'pin', lat:45.80, lng:-92.40 });
+    await LF.db.put('drawings', { id:'drag-area', kind:'area', name:'Drag area', points:[[45.801, -92.403], [45.801, -92.401], [45.799, -92.401], [45.799, -92.403]] }); });
+  await page.waitForTimeout(400);
+  const dragBy = async (sel, dx, dy) => { const bb = await page.locator(sel).first().boundingBox();
+    const x = bb.x + bb.width / 2, y = bb.y + bb.height / 2; await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x + dx / 2, y + dy / 2, { steps:4 }); await page.mouse.move(x + dx, y + dy, { steps:4 }); await page.mouse.up(); };
+  await page.evaluate(() => LF.items.open('waypoints', 'drag-wp'));
+  await page.click('[data-act=edit]');
+  await page.evaluate(() => LF.tuckSheet && LF.tuckSheet(true));
+  await page.waitForSelector('.edit-wp');
+  check(/Drag it on the map/.test(await page.textContent('#sheetHead')), 'editing a waypoint says it can be dragged');
+  await dragBy('.edit-wp', 60, -40);
+  await page.evaluate(() => LF.tuckSheet(false));
+  await page.click('[data-act=save]');
+  await page.waitForFunction(() => !/^Edit /.test(document.querySelector('#sheetHead h2').textContent));
+  const wpAfter = await page.evaluate(() => LF.db.get('waypoints', 'drag-wp'));
+  check(wpAfter.lat > 45.8001 && wpAfter.lng > -92.3999, `dragging the waypoint and saving moves it: ${wpAfter.lat}, ${wpAfter.lng}`);
+  await page.evaluate(() => LF.items.open('drawings', 'drag-area'));
+  await page.click('[data-act=edit]');
+  await page.evaluate(() => LF.tuckSheet(true));
+  await page.waitForSelector('.edit-h.vertex');
+  check(await page.locator('.edit-h.vertex').count() === 4 && await page.locator('.edit-h.move').count() === 1, 'editing an area shows a handle on each corner and a move handle');
+  await dragBy('.edit-h.vertex', -40, -40);
+  await dragBy('.edit-h.move', 0, 80);
+  await page.screenshot({ path: path.join(OUT, 'tools-drag.png') });
+  await page.evaluate(() => LF.tuckSheet(false));
+  await page.click('[data-act=save]');
+  await page.waitForFunction(() => !/^Edit /.test(document.querySelector('#sheetHead h2').textContent));
+  const ar = await page.evaluate(() => LF.db.get('drawings', 'drag-area'));
+  check(ar.points[0][0] > 45.8012 - 0.003 && ar.points[0][0] < 45.801 && ar.points[2][0] < 45.799 && ar.points[1][1] === ar.points[1][1],
+    'dragging a corner reshapes the area and ✥ moves all of it: ' + ar.points.map(p => p.map(v => v.toFixed(5)).join(',')).join(' | '));
+  await page.evaluate(() => LF.items.open('drawings', 'drag-area'));
+  await page.click('[data-act=edit]'); await page.waitForSelector('.edit-h.move');
+  await dragBy('.edit-h.move', 100, 0); await page.click('[data-act=cancel]');
+  const ar2 = await page.evaluate(() => LF.db.get('drawings', 'drag-area'));
+  check(JSON.stringify(ar2.points) === JSON.stringify(ar.points) && await page.locator('.edit-h').count() === 0, 'Cancel puts it back and removes the handles');
+
   check(errors.length === 0, 'no script errors' + (errors.length ? ':\n  ' + errors.join('\n  ') : ''));
   await browser.close();
   console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

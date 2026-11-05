@@ -39,6 +39,9 @@ site/                 the whole app: static files, no build step
                       for bulk delete / move / hide / show / export. Item details from imports: sourceId, color (+opacity), lineStyle
                       (solid|dash|dot), weight, iconName (the other app's icon name, mapped by iconFor/ICON_ALIASES), extra {}.
                       geo.js reads them from KML ExtendedData / GPX extensions / key=value descriptions and writes them back.
+                      Edit mode (geoEditor): the item is hidden from the normal layer and drawn on 'editPane' (470, pointer-events none
+                      so its canvas can't swallow taps): draggable waypoint; a vertex handle per corner + ✥ move-all for lines/areas;
+                      centre + edge (radius) for circles. Applied on Save only; tracks aren't movable. redraw() is generation-guarded.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload
@@ -142,6 +145,12 @@ All URLs are in the `SRC` block near the top of the app script. If an agency mov
 | `mnOhv`, `mnSnowmobile` | MN DNR `trans_ohv_trails_mn`, `trans_snowmobile_trails_mn` | Toggle `mnmotor`. OHV uses are "X"; snowmobile has the club and contact |
 | `mnForestRoads` | MN DNR `trans_state_forest_roads` | Toggle `mnroads`. `road_class`: System Forest Road (solid) / Minimum Maintenance Road (dashed) |
 | `mnAccess` | MN DNR `struc_water_access_sites` | Toggle `mnaccess`. Trailer launch (blue dot) / carry-in (teal); ramps, docks, parking, directions |
+| `wiStateTrails`, `wiIceAge`, `wiNct` | WI DNR `LF_DML/LF_DNR_REC_OPPS_WTM_Ext` layers 1–3 | Toggle `mntrails`. State trail uses are Y/N fields; `FEE` = state trail pass |
+| `wiRoadsCar`, `wiRoadsAtvSnow`, `wiRoadsAtv`, `wiRoadsSnow` | WI DNR `DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext` layers 1–4 | Car roads → `mnroads` (dashed = open seasonally, `DATE_OPEN_FROM/TO` MMDD); ATV/snowmobile → `mnmotor`, merged per `ROAD_SEQ_NO` on tap |
+| `wiBoat` | WI DNR `arcgis2/PR_Recreation/PR_Boat_Access_Shore_Fishing_WTM_Ext` layer 2 | Toggle `mnaccess`, `ABANDON_FLAG = 'No'` (`LF.REC_WHERE`). Layer 1 = shore fishing sites (not used) |
+
+The four `mn*` switch keys now cover both states (labels say WI & MN; keys kept so saved settings carry over). WI has no
+statewide snowmobile/ATV trail layer (county and club trails); only DNR roads open to those vehicles are shown.
 
 The MN trail/road/access layers (off by default, zoom 10+) are feature layers on `recPane` (430) with white casings copied from the
 same features onto `recCasePane` (429), so each service is queried once. Styles in `LF.REC`. A tap asks only the switched-on ones

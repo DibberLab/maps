@@ -348,6 +348,25 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(h.pEnd[1] > -92.4 + 0.00005 && Math.abs(h.p0[0] - 45.8) < 1e-9, 'dragging the basket moved the end and left the tee where it was');
   check(Math.abs(h.p10[0] - (45.8 + 0.00025)) < 1e-6, 'the anchor held still while the line bent from it');
 
+  // 13. Drag-to-sort inside a folder: drag the third waypoint to the top; the order is saved and comes back.
+  await page.evaluate(async () => { if(!document.getElementById('sheet').hidden) LF.closeSheet();
+    for(const [id, n, t] of [['s1', 'Alpha', 3], ['s2', 'Bravo', 2], ['s3', 'Charlie', 1]])
+      await LF.db.put('waypoints', { id, name:n, icon:'pin', lat:45.8, lng:-92.4, folder:'Sort test', updated:Date.now() - t * 1000 }); });
+  await page.evaluate(() => LF.items.list({ folder:'Sort test' }));
+  await page.waitForSelector('#sheetBody .folder[data-f="Sort test"] .grip');
+  const names = () => page.evaluate(() => Array.from(document.querySelectorAll('#sheetBody .folder[data-f="Sort test"] .row b')).map(b => b.textContent).join(','));
+  const before = await names();
+  const rowsG = page.locator('#sheetBody .folder[data-f="Sort test"] .grip');
+  const g3 = await rowsG.nth(2).boundingBox(), g1 = await rowsG.nth(0).boundingBox();
+  await page.mouse.move(g3.x + g3.width / 2, g3.y + g3.height / 2); await page.mouse.down();
+  await page.mouse.move(g3.x + g3.width / 2, g1.y + 20, { steps:8 }); await page.mouse.move(g3.x + g3.width / 2, g1.y + 2, { steps:4 }); await page.mouse.up();
+  await page.waitForTimeout(800);
+  const after = await names();
+  check(after.split(',')[0] === before.split(',')[2], `dragging ⠿ moves a row to the top of its folder: ${before} → ${after}`);
+  await page.evaluate(() => { LF.closeSheet(); LF.items.list({ folder:'Sort test' }); });
+  await page.waitForSelector('#sheetBody .folder[data-f="Sort test"] .row');
+  check(await names() === after, 'the new order is saved and comes back');
+
   check(errors.length === 0, 'no script errors' + (errors.length ? ':\n  ' + errors.join('\n  ') : ''));
   await browser.close();
   console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

@@ -372,3 +372,8 @@ button.brand .burger{margin-right:12px}
 .edit-h.dg-tee i,.edit-h.dg-basket i{inset:0;border-radius:8px;background:#0f766e;color:#fff;border:3px solid #fff}
 .edit-h.dg-anchor i{border-color:#0f766e}
 .edit-h.implied i{opacity:.55;border-style:dashed}
+
+/* Drag to reorder in the saved list (items.js dragSort). */
+.grip{flex:none;width:28px;align-self:stretch;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:18px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.row-wrap.dragging{position:relative;z-index:5;background:var(--panel);box-shadow:0 4px 14px rgba(0,0,0,.25);border-radius:6px}
+.row-wrap.dragging .grip{cursor:grabbing;color:var(--blaze)}

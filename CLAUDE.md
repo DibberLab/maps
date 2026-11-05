@@ -37,7 +37,9 @@ site/                 the whole app: static files, no build step
   js/items.js         saved waypoints/drawings/tracks: map rendering, view and edit sheets, photos (1280 px JPEG data URLs),
                       Go to guide, the saved list, GPX/KML export and import
                       Folders: r.folder name ("A / B" nests); the list groups by folder (switch, rename, remove, delete), Select mode
-                      for bulk delete / move / hide / show / export. Item details from imports: sourceId, color (+opacity), lineStyle
+                      for bulk delete / move / hide / show / export. Manual order: drag a row's ⠿ grip (dragSort) within its folder;
+                      saved as r.order (0..n) on that folder's items, which then sort first (unplaced ones after, newest first).
+                      Grips hide in Select mode and when a type filter is on. Opening the list fresh leaves Select mode. Item details from imports: sourceId, color (+opacity), lineStyle
                       (solid|dash|dot), weight, iconName (the other app's icon name, mapped by iconFor/ICON_ALIASES), extra {}.
                       geo.js reads them from KML ExtendedData / GPX extensions / key=value descriptions and writes them back.
                       Edit mode (geoEditor): the item is hidden from the normal layer and drawn on 'editPane' (470, pointer-events none

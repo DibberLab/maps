@@ -560,6 +560,36 @@ async function setHidden(store, id, hidden){
   await db.put(store, r);
 }
 
+/* Drag a row by its ⠿ grip to a new place among its folder's rows (mouse, finger or pen); onDrop gets the new key order. */
+function dragSort(rows, onDrop){
+  rows.addEventListener('pointerdown', e => {
+    const grip = e.target.closest('.grip'); if(!grip) return;
+    e.preventDefault();
+    const item = grip.closest('.row-wrap'), sheetEl = document.getElementById('sheet');
+    const grabDy = e.clientY - item.getBoundingClientRect().top; let lastY = e.clientY, moved = false, timer = null;
+    item.classList.add('dragging'); grip.setPointerCapture(e.pointerId);
+    const place = () => {
+      item.style.transform = '';
+      // Move the row in the list once the pointer passes the middle of a neighbour, then float it under the pointer.
+      const before = Array.from(rows.children).filter(r => r !== item).find(r => { const b = r.getBoundingClientRect(); return lastY < b.top + b.height / 2; });
+      if(before ? item.nextElementSibling !== before : rows.lastElementChild !== item) rows.insertBefore(item, before || null);
+      item.style.transform = `translateY(${lastY - grabDy - item.getBoundingClientRect().top}px)`;
+    };
+    // Near the top or bottom of the panel, scroll it so long folders can be sorted.
+    const edgeScroll = () => { if(!moved) return; const b = sheetEl.getBoundingClientRect();
+      const d = lastY < b.top + 50 ? -12 : lastY > b.bottom - 50 ? 12 : 0; if(d){ sheetEl.scrollTop += d; place(); } };
+    const startY = e.clientY;
+    const move = ev => { lastY = ev.clientY; if(Math.abs(lastY - startY) > 3) moved = true; place(); };
+    const up = () => {
+      grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', up);
+      clearInterval(timer); item.classList.remove('dragging'); item.style.transform = '';
+      if(moved) onDrop(Array.from(rows.children).map(r => r.dataset.k));
+    };
+    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', up);
+    timer = setInterval(edgeScroll, 30);
+  });
+}
+
 /* ---------- List, folders, selection, export, import ----------
    Items carry an optional folder name (r.folder, "Deer camp" or nested "Deer camp / Stands"), so folders
    sync with the items and exist while something is in them. Select mode adds checkboxes for bulk
@@ -589,7 +619,7 @@ const folderNames = items => Array.from(new Set(items.map(i => cleanFolder(i.r.f
 
 async function list(opts){
   if(!(await db.ready())){ flash('This browser is blocking on-device storage.', 5000); return; }
-  if(opts) filter = { type:opts.type || null, folder:opts.folder != null ? opts.folder : null };
+  if(opts){ filter = { type:opts.type || null, folder:opts.folder != null ? opts.folder : null }; selecting = false; chosen.clear(); }   // opened fresh: not in Select mode
   const sheetEl = document.getElementById('sheet'), keepScroll = !sheetEl.hidden && LF.sheetBody.querySelector('.folders') ? sheetEl.scrollTop : 0;
   const everything = await allItems();
   const items = everything.filter(i => (!filter.type || typeOf(i) === filter.type) && (filter.folder == null || under(i.r.folder, filter.folder)));
@@ -604,9 +634,14 @@ async function list(opts){
   folderNames(items).concat([NO_FOLDER]).forEach(f => groups.set(f, []));
   items.forEach(i => groups.get(cleanFolder(i.r.folder)).push(i));
   if(!groups.get(NO_FOLDER).length) groups.delete(NO_FOLDER);
+  // Your own order (r.order, set by dragging ⠿) comes first; anything never placed keeps the usual order after it.
+  groups.forEach(arr => { const pos = new Map(arr.map((i, n) => [i, n]));
+    arr.sort((a, b) => (a.r.order != null ? a.r.order : 1e9 + pos.get(a)) - (b.r.order != null ? b.r.order : 1e9 + pos.get(b))); });
+  const sortable = !selecting && !filter.type;   // sorting a type-filtered list would scramble the hidden ones
 
   const row = i => { const k = keyOf(i.store, i.r);
-    return `<div class="row-wrap${i.r.hidden ? ' off' : ''}${chosen.has(k) ? ' picked' : ''}">` +
+    return `<div class="row-wrap${i.r.hidden ? ' off' : ''}${chosen.has(k) ? ' picked' : ''}" data-k="${esc(k)}">` +
+      (sortable ? `<span class="grip" title="Drag to reorder" aria-label="Drag to reorder ${esc(i.r.name || 'item')}">⠿</span>` : '') +
       (selecting ? `<span class="chk"><input type="checkbox" data-act="pick" data-k="${esc(k)}"${chosen.has(k) ? ' checked' : ''} aria-label="Select ${esc(i.r.name || 'item')}"></span>` : '') +
       `<button class="row" data-act="${selecting ? 'pick-row' : 'open'}" data-s="${i.store}" data-id="${esc(i.r.id)}" data-k="${esc(k)}">${i.icon}<span><b>${esc(i.r.name || 'Untitled')}</b><span class="small">${esc(i.meta)}${i.r.hidden ? ' · hidden' : ''}</span></span></button>` +
       toggle(i.store, i.r) + '</div>'; };
@@ -716,6 +751,12 @@ async function list(opts){
   const mv = document.getElementById('mv-sel');
   if(mv) mv.addEventListener('change', () => { document.getElementById('mv-new').hidden = mv.value !== '__new'; });
   if(keepScroll) sheetEl.scrollTop = keepScroll;
+  if(sortable) LF.sheetBody.querySelectorAll('.folder .rows').forEach(rows => dragSort(rows, async keys => {
+    // Save the new order of this folder's items (0, 1, 2…); each save syncs like any other edit.
+    const byKey = new Map(items.map(i => [keyOf(i.store, i.r), i]));
+    let n = 0; for(const k of keys){ const i = byKey.get(k); if(!i) continue; const o = n++; if(i.r.order !== o) await db.put(i.store, Object.assign({}, i.r, { order:o })); }
+    list();
+  }));
   if(backScroll != null){ sheetEl.scrollTop = backScroll; backScroll = null; }
 }
 

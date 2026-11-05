@@ -21,7 +21,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   page.on('console', m => { if(m.type() === 'error') errors.push('console: ' + m.text()); });
 
   // 1. A link with a pin opens the map there and looks the parcel up.
-  await page.goto(BASE + `#map=17/${SIREN.lat}/${SIREN.lng}&pin=${SIREN.lat},${SIREN.lng}&base=hyb&layers=parcels,padus,widnr`);
+  await page.goto(BASE + `#map=17/${SIREN.lat}/${SIREN.lng}&pin=${SIREN.lat},${SIREN.lng}&base=hyb&layers=parcels,padus,widnr`, { waitUntil:'domcontentloaded' });
   await page.waitForSelector('#sheet:not([hidden])');
   await page.waitForFunction(() => !/Looking up/.test(document.querySelector('#sheetHead').textContent), null, { timeout: 30000 });
   const head = await page.textContent('#sheetHead');

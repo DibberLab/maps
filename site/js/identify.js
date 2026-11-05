@@ -187,7 +187,7 @@ function wiClass(v){ if(!has(v)) return null;
 const sheet = document.getElementById('sheet'), head = document.getElementById('sheetHead'), body = document.getElementById('sheetBody');
 let sheetHandler = null, sheetOnClose = null;
 function closeSheet(){
-  sheet.hidden = true; tuck(false); hi.clearLayers(); pin.remove(); LF.select.clear(); clickSeq++;
+  sheet.hidden = true; tuck(false); LF.shareCtx = null; hi.clearLayers(); pin.remove(); LF.select.clear(); clickSeq++;
   const f = sheetOnClose; sheetHandler = sheetOnClose = null; if(f) f();
   LF.pinLL = null; LF.emit('pin');
 }
@@ -248,7 +248,9 @@ LF.showSheet = function(headHTML, bodyHTML, opts){
   if(opts.back) document.getElementById('sheetBack').addEventListener('click', () => opts.back.go());
   sheetHandler = opts.onAct || null; sheetOnClose = opts.onClose || null;
   sheet.hidden = false; sheet.scrollTop = 0;
-  document.getElementById('shareBtn').hidden = !opts.pin;
+  // opts.share: what the Share button shares instead of a spot — { params:() => ({share, item}) } or { run:link => … }.
+  LF.shareCtx = opts.share || null;
+  document.getElementById('shareBtn').hidden = !(opts.pin || opts.share);
   LF.pinLL = opts.pin ? L.latLng(opts.pin[0], opts.pin[1]) : null; LF.emit('pin');
 };
 LF.sheetBody = body;
@@ -267,7 +269,7 @@ async function inspect(ll, opts){
   hi.clearLayers(); LF.select.clear(); LF.select.point([ll.lat, ll.lng]);
   LF.pinLL = ll; LF.emit('pin');
   document.getElementById('shareBtn').hidden = false;
-  sheet.hidden = false; tuck(false);
+  sheet.hidden = false; tuck(false); LF.shareCtx = null;
   head.innerHTML = `<h2>Looking up…</h2><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
   body.innerHTML = '<div class="loading">Checking parcel and public land records</div>';
   if(!(opts && opts.live) && await inspectSaved(ll, seq)) return;

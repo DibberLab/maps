@@ -20,7 +20,14 @@ site/                 the whole app: static files, no build step
   app.css             app styles (color tokens on :root, dark mode)
   js/store.js         LF.prefs (localStorage lf.*), LF.db (IndexedDB: waypoints/tracks/drawings/areas,
                       backup/restore), LF.listen/LF.emit event bus. Loaded first.
-  js/share.js         LF.share.parse/build for links: #map=z/lat/lng&pin=lat,lng&base=hyb&layers=a,b
+  js/share.js         LF.share.parse/build for links: #map=z/lat/lng&pin=lat,lng&base=hyb&layers=a,b[&share=<id>&item=<id>&panel=min]
+                      Share (app.js, LF.shareLink) = the current view + what the panel shows: a spot (pin), or whatever the sheet
+                      put in LF.shareCtx via showSheet({share}): a folder list publishes/refreshes the folder then shows its link
+                      sheet ({run}); a shared folder / its item card adds share/item ({params}). panel=min when tucked.
+                      Shared folders (items.js shareFolder/openShared): POST /api/shares {folder, items} (approved; same folder =
+                      same id, copy replaced), GET /api/shares/<id> (public, owner's display name only), DELETE to stop. Opened
+                      links draw into a preview layer via drawRecords (holes too); Save to my map copies them with ids
+                      sh-<share>-<id> and sharedFrom, so saving again updates. Photos dropped if the folder is over ~20 MB.
   js/map.js           SRC block (every data service URL), base maps, layers, layers panel, LF.flash
   js/select.js        LF.select (the selected thing drawn bold on 'selPane': cased outline, pulsing ring; cleared when
                       the sheet changes) and LF.shading / LF.shadeSwitch() (Hide shading: public land and any path with a
@@ -102,7 +109,7 @@ site/                 the whole app: static files, no build step
   manifest.json, icons/   install-as-app (icons rendered from icons/icon.svg)
   vendor/             Leaflet 1.9.4 and Esri Leaflet 3.0.12, byte-identical to the official releases
 server/app.py         the API: accounts (pending/approved/disabled, user/admin), sessions (HttpOnly cookie, hashed tokens,
-                      90 days), sync, admin endpoints. JSON-only writes + Origin check against CSRF; login rate limit.
+                      90 days), sync, shared folders (table shares, UNIQUE user+folder), admin endpoints. JSON-only writes + Origin check against CSRF; login rate limit.
 server/test_app.py    API tests (Flask test client)
 tools/run_all.sh      every test suite against a local site + API on fresh databases: bash tools/run_all.sh <venv>
 tools/smoke.js        end-to-end test in headless Chromium against the live services

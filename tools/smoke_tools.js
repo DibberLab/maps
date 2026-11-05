@@ -388,6 +388,44 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   const tidied = await page.evaluate(() => { const p = []; for(let i = 0; i < 10; i++) p.push([45.8 + i * 0.0002, -92.4, null, i * 1000]); p.splice(5, 0, [45.801, -92.399, null, 4500]); return LF.trackTidy(p).length; });
   check(tidied === 10, 'a track spike is removed on save (11 points → ' + tidied + ')');
 
+  // 15. Share a folder: a link anyone can open (no account) shows the holes; Save to my map keeps a copy.
+  await page.evaluate(async () => { if(!document.getElementById('sheet').hidden) LF.closeSheet(); });
+  // Shared from the folder's panel with the top Share button, at this exact view.
+  await page.evaluate(() => LF.map.setView([45.8005, -92.4005], 17, { animate:false }));
+  await page.evaluate(() => LF.items.list({ folder:'Fish Lake Disc Golf Course' }));
+  await page.waitForSelector('#shareBtn:not([hidden])');
+  await page.click('#shareBtn');
+  await page.waitForSelector('#sh-url');
+  const link = await page.inputValue('#sh-url');
+  check(/#map=17\/45\.80050\/-92\.40050.*&share=[A-Za-z0-9_-]{8,}/.test(link), 'Share on a folder\'s panel shares that folder at this view: ' + link.replace(/^.*#/, '#'));
+  const guestCtx = await browser.newContext({ viewport:{ width:420, height:800 } });
+  const guest = await guestCtx.newPage();
+  await guest.goto(link); await guest.waitForSelector('#sheet:not([hidden]) h2:has-text("Fish Lake Disc Golf Course")', { timeout:15000 });
+  const gView = await guest.evaluate(() => { const c = LF.map.getCenter(); return [c.lat, c.lng, LF.map.getZoom()]; });
+  check(Math.abs(gView[0] - 45.8005) < 1e-4 && Math.abs(gView[1] + 92.4005) < 1e-4 && gView[2] === 17, 'the link opens at the sharer\'s view: ' + gView.map(v => +v.toFixed(5)).join(', '));
+  const gHead = await guest.textContent('#sheetHead');
+  check(/Shared by/.test(gHead) && /2 holes/.test(gHead), 'someone without an account opens the link and sees the folder: ' + gHead.replace(/\s+/g, ' ').slice(0, 90));
+  await guest.waitForTimeout(800);
+  check(await guest.locator('.dg-end').count() >= 4, 'the shared holes are drawn with tee pads and baskets');
+  await guest.click('[data-act=sh-save]');
+  check(await guest.isVisible('#sheetHead') && /Sign in|account/i.test(await guest.textContent('#sheet')), 'saving a copy asks a guest to sign in');
+  await guestCtx.close();
+  // A shared folder's item card shares that item (share + item in the link), and the link reopens it.
+  const itemLink = await page.evaluate(async l => { location.hash = l.split('#')[1]; await new Promise(r => setTimeout(r, 1500));
+    document.querySelector('#sheetBody [data-act=sh-open]').click(); await new Promise(r => setTimeout(r, 300));
+    return LF.shareLink(LF.shareCtx.params()); }, link);
+  check(/&share=[^&]+&item=[^&]+/.test(itemLink), 'an open shared item gives a link to that item: ' + itemLink.replace(/^.*#/, '#'));
+  await page.goto('about:blank'); await page.goto(itemLink); await page.waitForSelector('#sheet:not([hidden]) #sheetBack', { timeout:15000 });
+  check(/Hole/.test(await page.textContent('#sheetHead h2')), 'the item link opens on that item: ' + await page.textContent('#sheetHead h2'));
+  await page.goto('about:blank'); await page.goto(link); await page.waitForSelector('#sheet:not([hidden]) [data-act=sh-save]', { timeout:15000 });
+  await page.click('[data-act=sh-save]');
+  await page.waitForTimeout(800);
+  const copies = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.sharedFrom).length));
+  check(copies === 2, 'Save to my map keeps a copy of the shared holes: ' + copies);
+  await page.goto('about:blank'); await page.goto(link); await page.waitForSelector('#sheet:not([hidden]) [data-act=sh-save]', { timeout:15000 });
+  await page.click('[data-act=sh-save]'); await page.waitForTimeout(800);
+  check(await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.sharedFrom).length)) === 2, 'saving the same share again updates the copies, not doubles them');
+
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));

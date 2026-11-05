@@ -24,8 +24,8 @@ function applyLink(s){
   if(s.view) map.setView([s.view[0], s.view[1]], s.view[2]);
   if(s.pin) LF.inspect(L.latLng(s.pin[0], s.pin[1]));
 }
-/* map.js already used the link's view, base and layers; open its pin. */
-if(LF.fromLink.pin) LF.inspect(L.latLng(LF.fromLink.pin[0], LF.fromLink.pin[1]));
+/* map.js already used the link's view, base and layers; open its pin (tucked if it was shared tucked). */
+if(LF.fromLink.pin){ LF.inspect(L.latLng(LF.fromLink.pin[0], LF.fromLink.pin[1])); if(LF.fromLink.tucked) LF.tuckSheet(true); }
 writeHash();
 /* Someone pastes another link into this tab. */
 window.addEventListener('hashchange', () => {
@@ -36,10 +36,14 @@ window.addEventListener('hashchange', () => {
 });
 
 /* ---------- Share this spot ---------- */
+/* What a link shares: the map exactly as you see it (centre, zoom, base, layers), plus what the panel shows — a spot,
+   a folder (published or refreshed first), a shared folder or one of its items — and whether the panel was tucked. */
+LF.shareLink = extra => location.origin + location.pathname + share.build(Object.assign({ view:viewNow(), base:LF.getBase(), layers:LF.onLayers(),
+  tucked:document.getElementById('sheet').classList.contains('tucked') }, extra || {}));
 document.getElementById('shareBtn').addEventListener('click', async () => {
-  const pin = pinNow();
-  const url = location.origin + location.pathname +
-    share.build({ view:viewNow(), pin, base:LF.getBase(), layers:LF.onLayers() });
+  const ctx = LF.shareCtx;
+  if(ctx && ctx.run){ ctx.run(); return; }   // e.g. a folder: it publishes, then shows its own Send / Copy
+  const url = LF.shareLink(ctx && ctx.params ? ctx.params() : { pin:pinNow() });
   const title = (document.querySelector('#sheetHead h2') || {}).textContent || 'Line Fence';
   if(navigator.share){
     try{ await navigator.share({ title:'Line Fence: ' + title, url }); return; }

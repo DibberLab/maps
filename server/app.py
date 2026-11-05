@@ -72,6 +72,16 @@ CREATE TABLE IF NOT EXISTS settings (
   data TEXT NOT NULL,
   updated INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS shares (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  folder TEXT NOT NULL,
+  data TEXT NOT NULL,
+  count INTEGER NOT NULL,
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  UNIQUE (user_id, folder)
+);
 CREATE TABLE IF NOT EXISTS login_fails (key TEXT NOT NULL, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS login_fails_key ON login_fails (key, ts);
 """
@@ -361,6 +371,71 @@ def push():
         accepted += 1
     conn.commit()
     return jsonify(accepted=accepted, seq=seq)
+
+
+# ---------- Shared folders ----------
+# An approved account publishes a copy of one folder's items; anyone with the link (/#share=<id>) can view it.
+# Publishing the same folder again replaces the copy and keeps the link. Only the owner's display name is shown.
+SHARE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
+MAX_SHARE_ITEMS = 2000
+
+
+@app.post("/api/shares")
+@needs("approved")
+def share_folder():
+    u = current_user()
+    b = body()
+    folder, items = b.get("folder"), b.get("items")
+    if not isinstance(folder, str) or not (0 < len(folder.strip()) <= 200):
+        return err("Name the folder to share.")
+    if not isinstance(items, list) or not (0 < len(items) <= MAX_SHARE_ITEMS):
+        return err(f"Share 1 to {MAX_SHARE_ITEMS} items.")
+    clean = [{"store": i["store"], "data": i["data"]} for i in items
+             if isinstance(i, dict) and i.get("store") in STORES and isinstance(i.get("data"), dict)]
+    if not clean:
+        return err("Nothing to share.")
+    data = json.dumps(clean, separators=(",", ":"))
+    folder = folder.strip()
+    conn = db()
+    row = conn.execute("SELECT id FROM shares WHERE user_id = ? AND folder = ?", (u["id"], folder)).fetchone()
+    if row:
+        sid = row["id"]
+        conn.execute("UPDATE shares SET data = ?, count = ?, updated = ? WHERE id = ?", (data, len(clean), now(), sid))
+    else:
+        sid = secrets.token_urlsafe(9)
+        conn.execute("INSERT INTO shares VALUES (?, ?, ?, ?, ?, ?, ?)", (sid, u["id"], folder, data, len(clean), now(), now()))
+    conn.commit()
+    return jsonify(id=sid, folder=folder, count=len(clean))
+
+
+@app.get("/api/shares")
+@needs("approved")
+def my_shares():
+    rows = db().execute("SELECT id, folder, count, updated FROM shares WHERE user_id = ? ORDER BY folder",
+                        (current_user()["id"],)).fetchall()
+    return jsonify(shares=[dict(r) for r in rows])
+
+
+@app.get("/api/shares/<sid>")
+def view_share(sid):
+    if not SHARE_ID_RE.match(sid):
+        return err("Not found.", 404)
+    row = db().execute("SELECT s.folder, s.data, s.count, s.updated, u.name FROM shares s JOIN users u ON u.id = s.user_id "
+                       "WHERE s.id = ? AND u.status != 'disabled'", (sid,)).fetchone()
+    if not row:
+        return err("This shared folder was removed or never existed.", 404)
+    return jsonify(id=sid, folder=row["folder"], by=(row["name"] or "").strip() or "A Line Fence user",
+                   count=row["count"], updated=row["updated"], items=json.loads(row["data"]))
+
+
+@app.delete("/api/shares/<sid>")
+@needs("approved")
+def unshare(sid):
+    cur = db().execute("DELETE FROM shares WHERE id = ? AND user_id = ?", (sid, current_user()["id"]))
+    db().commit()
+    if not cur.rowcount:
+        return err("Not found.", 404)
+    return jsonify(ok=True)
 
 
 # ---------- Admin ----------

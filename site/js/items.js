@@ -157,28 +157,32 @@ async function redraw(){
   const [wps, drs, trs] = await Promise.all([db.all('waypoints'), db.all('drawings'), db.all('tracks')]).then(a => a.map(x => x.filter(shown)));
   if(gen !== drawGen) return;
   layer.clearLayers();
+  drawRecords(layer, wps, drs, trs, tap);
+}
+/* Draws waypoints, drawings and tracks (holes included) into a layer; onTap(store, r) gives each one's click handler.
+   Your saved items use it, and so does a shared folder you're looking at. */
+function drawRecords(target, wps, drs, trs, onTap){
   drs.forEach(d => {
     const c = d.color || '#e8590c', o = lineOpts(d, 3);
-    if(d.kind === 'line') L.polyline(d.points, o).on('click', tap('drawings', d)).addTo(layer);
+    if(d.kind === 'line') L.polyline(d.points, o).on('click', onTap('drawings', d)).addTo(target);
     else {
       const fill = { baseFill:.15, fillOpacity:LF.fillOf(.15), interactive:false };
       const shape = d.kind === 'circle' ? L.circle(d.center, Object.assign({ radius:d.radius }, o, fill))
                                         : L.polygon(d.points, Object.assign({}, o, fill));
-      shape.addTo(layer);
+      shape.addTo(target);
       L.marker(where('drawings', d), { pane:'savedMarkers', icon:L.divIcon({ className:'area-label', iconSize:null,
         html:`<span style="border-color:${c}">${esc(d.name)} · ${esc(stats('drawings', d)[0][1])}</span>` }) })
-        .on('click', tap('drawings', d)).addTo(layer);
+        .on('click', onTap('drawings', d)).addTo(target);
     }
   });
-  dgBands = [];
   trs.filter(t => !t.recording && t.points.length > 1).forEach(t => {
     const ll = t.points.map(p => [p[0], p[1]]);
-    if(t.dg) drawHole(t, ll);
+    if(t.dg) drawHole(t, ll, target, onTap);
     L.polyline(ll, lineOpts(Object.assign({ color:t.color || (t.dg ? DG : '#d62828') }, t), 4))
-      .on('click', tap('tracks', t)).addTo(layer);
+      .on('click', onTap('tracks', t)).addTo(target);
   });
   wps.forEach(w => L.marker([w.lat, w.lng], { pane:'savedMarkers', icon:wpIcon(w), title:w.name, riseOnHover:true, zIndexOffset:1000 })
-    .on('click', tap('waypoints', w)).addTo(layer));
+    .on('click', onTap('waypoints', w)).addTo(target));
 }
 /* ---------- Disc golf holes ----------
    Words: a "hole" is the whole thing (tee pad + fairway + basket); the start point is the tee pad, the end point the basket.
@@ -189,7 +193,7 @@ const DG = '#0f766e';
 let dgBands = [];
 const mPerPx = lat => 156543.03 * Math.cos(lat * Math.PI / 180) / Math.pow(2, map.getZoom());
 const bandPx = (ft, lat) => Math.max(3, ft * 0.3048 / mPerPx(lat));
-map.on('zoomend', () => dgBands.forEach(b => b.setStyle({ weight:bandPx(b.ft, b.lat) })));
+map.on('zoomend', () => { dgBands = dgBands.filter(b => map.hasLayer(b)); dgBands.forEach(b => b.setStyle({ weight:bandPx(b.ft, b.lat) })); });
 /* Where a fraction of the way along a path is, and which way the path heads there. */
 function along(ll, frac){
   const cum = [0]; for(let i = 1; i < ll.length; i++) cum.push(cum[i - 1] + geo.dist(ll[i - 1], ll[i]));
@@ -201,16 +205,16 @@ const dgIcon = (k, label) => L.divIcon({ className:'wp-wrap dg-end', iconSize:[3
   html:`<div class="wp" style="background:${DG};color:#fff">${glyph(k, 17)}</div>${label ? `<div class="wp-label">${esc(label)}</div>` : ''}` });
 const arrowIcon = brg => L.divIcon({ className:'dg-arrow', iconSize:[18, 18], iconAnchor:[9, 9],
   html:`<svg viewBox="0 0 24 24" width="18" height="18" style="transform:rotate(${brg}deg)"><path d="M12 3 20 19 12 14 4 19z" fill="#fff" stroke="${DG}" stroke-width="2.5" stroke-linejoin="round"/></svg>` });
-function drawHole(t, ll){
+function drawHole(t, ll, target, onTap){
   const c = t.color || DG, lat = ll[0][0];
   if(t.dg.fairway){ const band = L.polyline(ll, { pane:'savedPane', renderer:touchy, color:c, opacity:.22, weight:bandPx(t.dg.fairway, lat), lineCap:'round', lineJoin:'round' })
-    .on('click', tap('tracks', t)).addTo(layer); band.ft = t.dg.fairway; band.lat = lat; dgBands.push(band); }
+    .on('click', onTap('tracks', t)).addTo(target); band.ft = t.dg.fairway; band.lat = lat; dgBands.push(band); }
   const len = geo.length(ll), n = Math.max(1, Math.min(6, Math.round(len / 45)));
   for(let i = 0; i < n; i++){ const a = along(ll, (i + .5) / n);
-    L.marker(a.ll, { pane:'savedMarkers', interactive:false, keyboard:false, icon:arrowIcon(a.brg) }).addTo(layer); }
+    L.marker(a.ll, { pane:'savedMarkers', interactive:false, keyboard:false, icon:arrowIcon(a.brg) }).addTo(target); }
   const label = [t.dg.hole ? 'Hole ' + t.dg.hole : t.name, t.dg.par ? 'Par ' + t.dg.par : '', geo.fmtFt(len)].filter(Boolean).join(' · ');
-  L.marker(ll[0], { pane:'savedMarkers', icon:dgIcon('dgtee', label), title:'Tee: ' + (t.name || ''), zIndexOffset:900 }).on('click', tap('tracks', t)).addTo(layer);
-  L.marker(ll[ll.length - 1], { pane:'savedMarkers', icon:dgIcon('dgbasket'), title:'Basket: ' + (t.name || ''), zIndexOffset:900 }).on('click', tap('tracks', t)).addTo(layer);
+  L.marker(ll[0], { pane:'savedMarkers', icon:dgIcon('dgtee', label), title:'Tee: ' + (t.name || ''), zIndexOffset:900 }).on('click', onTap('tracks', t)).addTo(target);
+  L.marker(ll[ll.length - 1], { pane:'savedMarkers', icon:dgIcon('dgbasket'), title:'Basket: ' + (t.name || ''), zIndexOffset:900 }).on('click', onTap('tracks', t)).addTo(target);
 }
 
 /* "Hole 7", "#7", "H7" or a bare "7" in a track's name gives its hole number. */
@@ -592,6 +596,102 @@ function dragSort(rows, onDrop){
   });
 }
 
+/* ---------- Sharing a folder ----------
+   Share folder (link) publishes a copy of a folder's items (subfolders too) to the account server and gives a link,
+   maps.dibberlab.me/#share=<id>. Anyone who opens it sees them on the map, holes and all, without an account;
+   an approved account can Save to my map. Sharing the same folder again updates the copy behind the same link. */
+async function shareFolder(f, arr){
+  const pack = keepPhotos => arr.map(i => ({ store:i.store, data:Object.assign({}, i.r, keepPhotos ? {} : { photos:undefined }) }));
+  let items = pack(true), note = '';
+  if(JSON.stringify(items).length > 20e6){ items = pack(false); note = ' Photos were left out to keep it under the size limit.'; }
+  const view = LF.shareLink({});   // the map as it is now (centre, zoom, panel tucked or not)
+  flash('Sharing…', 8000);
+  let res;
+  try{ res = await LF.api('POST', 'shares', { folder:f, items }); }catch(e){ flash('Could not share: ' + e.message, 5000); return; }
+  shareSheet(f, res, note, view + (view.includes('#') ? '&' : '#') + 'share=' + encodeURIComponent(res.id));
+}
+function shareSheet(f, res, note, url){
+  LF.showSheet(`<h2>Share “${esc(f)}”</h2><div class="small">${res.count} item${res.count === 1 ? '' : 's'}</div>`,
+    `<label>Link<input id="sh-url" readonly value="${esc(url)}"></label>
+     <div class="btnrow acts">${navigator.share ? '<button class="btn primary" data-act="sh-send">Send…</button>' : ''}<button class="btn${navigator.share ? '' : ' primary'}" data-act="sh-copy">Copy link</button>
+       <button class="btn danger" data-act="sh-stop">Stop sharing</button></div>
+     <p class="note">Anyone with the link sees this folder on the map exactly where you're looking now; they don't need an account to look, and
+       approved accounts can save a copy. Sharing this folder again updates the copy behind the same link.${esc(note)}</p>`,
+    { back:{ label:'Back to ' + f, go:() => list({ folder:f }) }, onAct: async act => {
+      if(act === 'sh-copy'){ try{ await navigator.clipboard.writeText(url); flash('Link copied'); }catch(e){ const i = document.getElementById('sh-url'); i.select(); flash('Select and copy the link'); } }
+      if(act === 'sh-send'){ try{ await navigator.share({ title:f, text:f + ' on Line Fence', url }); }catch(e){} }
+      if(act === 'sh-stop' && confirm(`Stop sharing “${f}”? The link will stop working.`)){
+        try{ await LF.api('DELETE', 'shares/' + res.id, {}); flash('Sharing stopped; the link no longer works'); list({ folder:f }); }catch(e){ flash(e.message, 5000); } }
+    } });
+}
+
+let preview = null;   // the shared folder being looked at: { id, folder, by, items, layer }
+async function openShared(id, o){
+  o = o || {};
+  let sh;
+  try{ sh = await LF.api('GET', 'shares/' + encodeURIComponent(id)); }catch(e){ flash(e.status === 404 ? 'That shared folder was removed or the link is wrong.' : 'Could not open the shared folder: ' + e.message, 6000); return; }
+  closeShared(true);
+  const layerP = L.layerGroup().addTo(map);
+  const by = s => sh.items.filter(i => i.store === s).map(i => i.data);
+  const wps = by('waypoints'), drs = by('drawings'), trs = by('tracks').filter(t => t.points && t.points.length > 1);
+  drawRecords(layerP, wps, drs, trs, (store, r) => e => { L.DomEvent.stopPropagation(e); sharedItem(store, r); });
+  preview = Object.assign({ layer:layerP }, sh);
+  const b = L.latLngBounds([]); sh.items.forEach(i => { try{ b.extend(boundsOf(i.store, i.data)); }catch(e){} });
+  if(b.isValid() && !o.keepView) LF.fitVisible ? LF.fitVisible(b, 17) : map.fitBounds(b);   // a link with a view opens right there
+  sharedList();
+  const it = o.item && sh.items.find(i => i.data.id === o.item);
+  if(it) sharedItem(it.store, it.data);
+  if(o.tucked) LF.tuckSheet(true);
+}
+function sharedList(){
+  if(!preview) return;
+  const p = preview, holes = p.items.filter(i => i.store === 'tracks' && i.data.dg).length;
+  const order = (a, b) => (a.data.order != null ? a.data.order : 1e9) - (b.data.order != null ? b.data.order : 1e9) || String(a.data.name || '').localeCompare(String(b.data.name || ''), undefined, { numeric:true });
+  const rows = p.items.slice().sort(order).map((i, n) => `<button class="row" data-act="sh-open" data-n="${p.items.indexOf(i)}"><span><b>${esc(i.data.name || 'Untitled')}</b>` +
+    `<span class="small">${esc(i.store === 'tracks' && i.data.dg ? 'Disc golf hole' + (i.data.dg.par ? ' · par ' + i.data.dg.par : '') + ' · ' + geo.fmtFt(geo.length(i.data.points)) : i.store === 'waypoints' ? iconLabel(i.data) : i.store === 'tracks' ? 'Track' : KIND[i.data.kind])}</span></span></button>`).join('');
+  LF.showSheet(`<h2>${esc(p.folder)}</h2><div><span class="tag saved">Shared by ${esc(p.by)}</span></div>` +
+    `<div class="small">${p.count} item${p.count === 1 ? '' : 's'}${holes ? ` · ${holes} hole${holes === 1 ? '' : 's'}` : ''} · updated ${new Date(p.updated * 1000).toLocaleDateString('en-US')}</div>`,
+    `<div class="btnrow acts"><button class="btn primary" data-act="sh-save">Save to my map</button><button class="btn" data-act="sh-close">Close</button></div>
+     <div class="folders"><div class="rows">${rows}</div></div>
+     <p class="note">You're looking at a copy someone shared. Save to my map keeps your own copy in a folder of the same name (saving again updates it).</p>`,
+    { onClose:() => {}, share:{ params:() => ({ share:p.id }) }, onAct: async (act, el) => {
+      if(act === 'sh-open'){ const i = p.items[+el.dataset.n]; map.fitBounds(boundsOf(i.store, i.data), { maxZoom:18, padding:[40, 40] }); sharedItem(i.store, i.data); }
+      if(act === 'sh-close') closeShared();
+      if(act === 'sh-save'){ if(!LF.account.require('waypoints, tracks and drawings')) return; await saveShared(); }
+    } });
+}
+function sharedItem(store, r){
+  const body = '<div class="block">' + dl(stats(store, r)) + '</div>' + details(store, r) + (r.notes ? `<div class="block"><p class="notes">${esc(r.notes)}</p></div>` : '');
+  LF.showSheet(head(store, r).replace('<span class="tag saved">', '<span class="tag">'), body, { back:{ label:'Back to ' + preview.folder, go:sharedList },
+    share:{ params:() => ({ share:preview.id, item:r.id }) } });
+  selectItem(store, r);
+}
+async function saveShared(){
+  const p = preview; if(!p) return;
+  let n = 0;
+  for(const i of p.items){
+    // Its own id per share, so saving the same share again updates these copies instead of doubling them.
+    const copy = Object.assign({}, i.data, { id:('sh-' + p.id + '-' + i.data.id).slice(0, 64), folder:i.data.folder || p.folder, sharedFrom:p.id });
+    delete copy.hidden; delete copy.recording;
+    await db.put(i.store, copy); n++;
+  }
+  db.persist();
+  closeShared();
+  flash(`Saved ${n} item${n === 1 ? '' : 's'} to “${p.folder}”`, 4000);
+  list({ folder:p.folder });
+}
+function closeShared(keepSheet){
+  if(!preview) return;
+  map.removeLayer(preview.layer); preview = null;
+  if(!keepSheet) LF.closeSheet();
+}
+LF.openShared = openShared;
+// A share link opens the shared folder (at its view, item and panel state), whether the app was just opened with it or
+// was already open. LF.fromLink was read before app.js rewrites the address bar with the map view.
+const openLink = l => { if(l.share && /^[A-Za-z0-9_-]{8,32}$/.test(l.share)) openShared(l.share, { keepView:!!l.view, item:l.item, tucked:l.tucked }); };
+if(LF.fromLink && LF.fromLink.share) setTimeout(() => openLink(LF.fromLink), 300);
+window.addEventListener('hashchange', () => { const l = LF.share.parse(location.hash); if(l.share && !(preview && preview.id === l.share)) openLink(l); });
+
 /* ---------- List, folders, selection, export, import ----------
    Items carry an optional folder name (r.folder, "Deer camp" or nested "Deer camp / Stands"), so folders
    sync with the items and exist while something is in them. Select mode adds checkboxes for bulk
@@ -657,6 +757,7 @@ async function list(opts){
       (f ? `<button class="fmore" data-act="fmenu" data-f="${esc(f)}" aria-label="Folder options">⋯</button>` : '') + '</div>' +
       `<div class="fmenu" hidden><button class="btn" data-act="f-rename" data-f="${esc(f)}">Rename</button><button class="btn" data-act="f-unfile" data-f="${esc(f)}">Remove folder, keep items</button>` +
         (arr.some(i => i.store === 'tracks' && !i.r.dg) ? `<button class="btn" data-act="f-dg" data-f="${esc(f)}">Make its tracks disc golf holes</button>` : '') +
+        (f ? `<button class="btn" data-act="f-share" data-f="${esc(f)}">Share folder (link)</button>` : '') +
       `<button class="btn danger" data-act="f-delete" data-f="${esc(f)}">Delete folder and items</button></div>` +
       `<div class="rows">${arr.map(row).join('')}</div></div>`;
   };
@@ -685,7 +786,8 @@ async function list(opts){
   const stamp = new Date().toISOString().slice(0, 10);
 
   const title = filter.folder != null ? (filter.folder || 'Not in a folder') : filter.type ? TYPES[filter.type] : 'My content';
-  LF.showSheet(`<h2>${esc(title)}</h2>`, body, { onAct: async (act, el) => {
+  const shareFolderNow = filter.folder ? { run:() => { if(LF.account.require('sharing folders')) shareFolder(filter.folder, everything.filter(i => under(i.r.folder, filter.folder))); } } : null;
+  LF.showSheet(`<h2>${esc(title)}</h2>`, body, { share:shareFolderNow, onAct: async (act, el) => {
     const f = el.dataset.f;
     if(act === 'filter'){ selecting = false; chosen.clear(); return list({ type:el.dataset.t || null }); }
     if(act === 'open'){ const y = sheetEl.scrollTop;
@@ -704,6 +806,7 @@ async function list(opts){
       for(const i of arr) await db.put('tracks', Object.assign({}, i.r, { dg:{ hole:holeFromName(i.r.name), par:'', fairway:0, anchors:[] } }));
       flash(`${arr.length} track${arr.length === 1 ? '' : 's'} marked as disc golf holes`); if(act === 'bulk-dg'){ chosen.clear(); selecting = false; } list();
     }
+    if(act === 'f-share'){ if(LF.account.require('sharing folders')) shareFolder(f, items.filter(i => under(i.r.folder, f))); return; }
     if(act === 'f-unfile'){ await setFolder(inFolder(f), ''); flash(`Folder “${f}” removed; its items are kept`); list(); }
     if(act === 'f-delete'){
       const arr = inFolder(f);

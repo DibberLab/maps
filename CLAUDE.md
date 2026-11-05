@@ -83,6 +83,10 @@ site/                 the whole app: static files, no build step
                       POST /api/rounds → short link to /#round=<id>; anyone with it joins (copy lv-<id>), no account. Each score
                       is a cell op (POST /api/rounds/<id> {scores,pars,finished}) queued in r.pending and retried; poll every 3 s
                       with ?since=version; merge() = server copy + pending ops; own current hole per phone.
+                      Each round records a GPS track from Start / joining (track.js start({round}); skipped if a track is already
+                      recording; a round track reloaded within 30 min resumes unpaused). Finishing offers Save track with the round
+                      (folder "Disc golf / Rounds", r.trackId) or Discard (LF.track.endFor). The pill #roundChip under the search bar
+                      shows the round in progress (updated in the last 12 h) or a finished one whose track awaits that choice.
   js/dgthrow.js       disc golf part 3, Measure a throw (+ > Disc golf; My throws lists them): LF.db store 'throws' (DB v4; synced
                       + backed up) { from, to, dist (m), acc (m), disc, kind, at, name, hole?, course? }. Each end: raw GPS averaged
                       (up to 20 s, early once 8+ readings agree to ±1.5 m), or a mapped tee pad within 12 m (its saved spot, ±1.5 m),

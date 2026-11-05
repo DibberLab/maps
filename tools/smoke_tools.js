@@ -472,6 +472,11 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   check(/Tester[\s\S]*Ben/.test(await page.textContent('#r-sides')), 'players added: ' + (await page.textContent('#r-sides')).replace(/✕/g, ' ').trim());
   await page.click('#sheetBody [data-act=go]');
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1 · Par 3")');
+  await page.waitForFunction(() => LF.track.current() && LF.track.current().round, null, { timeout:5000 }).catch(() => {});
+  check(await page.evaluate(() => !!(LF.track.current() && LF.track.current().round)), 'starting a round starts recording its track');
+  await page.waitForSelector('#roundChip:not([hidden])', { timeout:5000 }).catch(() => {});
+  check(/Round · Test Park · Hole 1/.test(await page.textContent('#roundChip')), 'a pill under the search bar shows the round: ' + (await page.textContent('#roundChip')).trim());
+  for(let i = 1; i <= 4; i++){ await ctx.setGeolocation({ latitude:45.86 + i * 0.0001, longitude:-92.62, accuracy:5 }); await page.waitForTimeout(500); }
   const sideBtn = async (n, act) => { await page.locator('#sheetBody .srow').nth(n).locator(`[data-act=${act}]`).click(); await page.waitForTimeout(150); };
   await sideBtn(0, 'par'); await sideBtn(0, 'inc');   // me: 4
   await sideBtn(1, 'dec');                             // Ben: 2
@@ -484,6 +489,12 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   check(/Ben wins with 7/.test(await page.textContent('#sheetBody .winner')), 'finishing shows the card and the winner: ' + await page.textContent('#sheetBody .winner'));
   const rd = await page.evaluate(() => LF.db.all('rounds').then(r => r[0]));
   check(rd && rd.finished && JSON.stringify(Object.values(rd.scores)) === '[[4,4],[2,5]]', 'the round is saved with every score: ' + JSON.stringify(rd && rd.scores));
+  check(await page.isVisible('#sheetBody [data-act=track-save]') && /round over/.test(await page.textContent('#roundChip')), 'the finished round offers to save its track');
+  await page.click('#sheetBody [data-act=track-save]');
+  await page.waitForSelector('#sheetBody [data-act=track-show]');
+  const rt = await page.evaluate(() => LF.db.all('rounds').then(async r => { const t = await LF.db.get('tracks', r[0].trackId); return t && { folder:t.folder, n:t.points.length, rec:t.recording, name:t.name }; }));
+  check(rt && rt.folder === 'Disc golf / Rounds' && rt.n >= 3 && !rt.rec, 'the track is saved with the round: ' + JSON.stringify(rt));
+  check(await page.isHidden('#roundChip') && !(await page.evaluate(() => LF.track.recording())), 'then the pill goes and recording stops');
   await page.click('#sheetBack');
   await page.waitForSelector('#sheetBody h3:has-text("Past rounds")', { timeout:5000 }).catch(() => {});
   check(/Past rounds[\s\S]*Test Park/.test(await page.textContent('#sheetBody')), 'past rounds are listed');
@@ -497,6 +508,11 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForSelector('#linkPop:not([hidden]) input');
   const roundLink = await page.inputValue('#linkPop input');
   await page.click('#linkPop [data-p=close]');
+  await page.waitForFunction(() => /Live round · Test Park/.test(document.getElementById('roundChip').textContent), null, { timeout:5000 }).catch(() => {});
+  check(/Live round · Test Park · Hole 1/.test(await page.textContent('#roundChip')), 'the pill says Live round once invited');
+  await page.evaluate(() => LF.closeSheet()); await page.click('#roundChip');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1")');
+  check(true, 'tapping the pill goes back to the round');
   check(/\/api\/s\/[A-Za-z0-9]{6}$/.test(roundLink) && await page.isVisible('#sheetHead .live-tag'), 'Invite makes the round live and gives a short link: ' + roundLink.replace(/^https?:\/\/[^/]+/, ''));
   const benCtx = await browser.newContext({ viewport:{ width:420, height:800 } });
   const ben = await benCtx.newPage();

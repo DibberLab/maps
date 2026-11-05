@@ -211,6 +211,7 @@ table.holes tr.on td{background:var(--panel-2);font-weight:700;color:var(--blaze
 
 /* Directions */
 .chip.route{background:#0b3d91}
+.chip.roundchip{background:#0f766e;border:0;cursor:pointer;padding:8px 14px;min-height:36px}
 .chip.route .txt{cursor:pointer}
 ol.steps{list-style:none;counter-reset:st;padding:0;margin:8px 0}
 ol.steps li{counter-increment:st;display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}

@@ -73,7 +73,8 @@ async function start(){
         else { name = $('r-name').value.trim() || 'Disc golf'; holes = Array.from({ length:+$('r-holes').value }, (_, i) => ({ n:i + 1, par:3 })); }
         const r = { name, folder:folder || null, format, holes, sides, scores:Object.fromEntries(sides.map(s => [s.id, holes.map(() => null)])), hole:0, started:Date.now(), finished:null };
         prefs.set('dgPlayers', Array.from(new Set(sides.map(s => s.name).concat(prefs.get('dgPlayers', [])))).slice(0, 30));
-        card(await db.put('rounds', r));
+        const saved = await db.put('rounds', r);
+        card(saved); trackRound(saved);
       }
     } });
   const sel = document.getElementById('r-course');
@@ -151,12 +152,20 @@ function summary(r){
     `<td><b>${x.strokes}</b></td><td>${x.played ? vsPar(x.diff) : ''}</td></tr>`).join('');
   LF.showSheet(`<h2>${esc(r.name)}</h2><div class="small">${when(r.started)} · ${r.format === 'teams' ? 'Teams' : 'Singles'}${r.finished ? '' : ' · in progress'}</div>`,
     `<div data-round="${esc(r.id)}"></div>` + (winners.length && r.finished ? `<div class="block"><p class="winner">🏆 ${esc(winners.join(' & '))}${winners.length > 1 ? ' tie' : ' wins'} with ${best}</p></div>` : '') +
-    `<div class="sgrid-wrap"><table class="sgrid">${head}${rows}</table></div>
+    `<div class="sgrid-wrap"><table class="sgrid">${head}${rows}</table></div>${trackBlock(r)}
      <div class="btnrow acts">${r.finished ? '<button class="btn" data-act="reopen">Edit scores</button>' : '<button class="btn primary" data-act="reopen">Back to the hole</button>'}
        <button class="btn danger" data-act="del">Delete round</button></div>`,
     { back:{ label:'Rounds', go:start }, onClose:() => leaving(r.id), onAct: async act => {
       if(act === 'reopen'){ if(r.finished){ r.finished = null; r.hole = 0; r = await commit(r, [{ finished:null }]); } card(r); }
-      if(act === 'del' && confirm(r.live ? 'Delete this round from this phone? Others who joined keep their copy.' : 'Delete this round?')){ await db.del('rounds', r.id); flash('Round deleted'); start(); }
+      if(act === 'del' && confirm(r.live ? 'Delete this round from this phone? Others who joined keep their copy.' : 'Delete this round?')){
+        await LF.track.endFor(r.id, false); await db.del('rounds', r.id); flash('Round deleted'); start(); }
+      if(act === 'track-save'){
+        const t = await LF.track.endFor(r.id, true, { name:`${r.name} round · ${when(r.started)}`, folder:'Disc golf / Rounds', color:DG });
+        if(t){ r.trackId = t.id; r = await db.put('rounds', r); flash('Track saved with the round', 3000); }
+        summary(r);
+      }
+      if(act === 'track-drop' && confirm('Throw away the track of this round?')){ await LF.track.endFor(r.id, false); summary(r); }
+      if(act === 'track-show'){ const t = await db.get('tracks', r.trackId); if(t) LF.items.open('tracks', t.id); else flash('That track was deleted'); }
     } });
   poll(r);
 }
@@ -234,13 +243,50 @@ async function join(liveId){
     const cs = await courses(), mine = res.round.folder && cs.get(res.round.folder);
     r = Object.assign({ id, live:liveId, hole:0, pending:[] }, res.round, { holes:res.round.holes.map((h, i) => Object.assign({}, h, mine && mine[i] ? { trackId:mine[i].id } : {})) });
   }
+  const fresh = !(await db.get('rounds', id));
   r = await db.put('rounds', merge(r, res.round, res.version));
   flash('Joined the round at ' + r.name, 3000);
   r.finished ? summary(r) : card(r);
+  if(fresh) trackRound(r);
 }
 const openLink = l => { if(l.round) join(l.round); };
 if(LF.fromLink && LF.fromLink.round) setTimeout(() => openLink(LF.fromLink), 400);
 window.addEventListener('hashchange', () => openLink(LF.share.parse(location.hash)));
+
+/* ---------- The round's track and the pill under the search bar ----------
+   Every round played on this phone records a GPS track from the start (unless a track is already recording).
+   When the round is finished you choose: save the track with the round (folder "Disc golf / Rounds",
+   r.trackId) or throw it away. The pill shows the round in progress (or a finished one whose track still
+   waits for that choice) and opens it with one tap. */
+async function trackRound(r){
+  if(r.finished || LF.track.recording()) return;
+  await LF.track.start({ round:r.id, name:`${r.name} round` });
+}
+function trackBlock(r){
+  const cur = LF.track.current();
+  if(cur && cur.round === r.id){
+    return `<div class="block"><h3>Track of this round</h3><p class="small">${geo.fmtDist(cur.m)} · ${geo.fmtTime(cur.ms)}${r.finished ? '' : ' · still recording'}</p>` +
+      (r.finished ? '<div class="btnrow"><button class="btn primary" data-act="track-save">Save track with the round</button><button class="btn" data-act="track-drop">Discard track</button></div>' : '') + '</div>';
+  }
+  return r.trackId ? '<div class="btnrow"><button class="btn" data-act="track-show">Show the track of this round</button></div>' : '';
+}
+const pill = document.getElementById('roundChip');
+async function pillRefresh(){
+  if(!pill) return;
+  const all = await db.all('rounds').catch(() => []), cur = LF.track.current();
+  const waiting = cur && cur.round && all.find(r => r.id === cur.round && r.finished);
+  const r = waiting || all.filter(x => !x.finished && Date.now() - (x.updated || x.started) < 12 * 3600e3).sort((a, b) => (b.updated || 0) - (a.updated || 0))[0];
+  pill.hidden = !r;
+  if(!r) return;
+  pill.dataset.id = r.id;
+  pill.querySelector('.txt').textContent = waiting ? `⛳ ${r.name} · round over · save the track?` :
+    `⛳ ${r.live ? 'Live round' : 'Round'} · ${r.name} · Hole ${r.holes[r.hole].n}`;
+}
+if(pill){
+  pill.addEventListener('click', async () => { const r = await db.get('rounds', pill.dataset.id); if(r) (r.finished ? summary(r) : card(r)); });
+  LF.listen('dbWrite', e => { if(e.store === 'rounds' || (e.store === 'tracks' && e.deleted)) pillRefresh(); });
+  db.ready().then(ok => ok && setTimeout(pillRefresh, 500));
+}
 
 LF.rounds = { start, card, summary, join };
 })(window.LF);

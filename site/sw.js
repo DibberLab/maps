@@ -6,7 +6,7 @@
    is one, else the network. Offline parcel and public land records live in
    IndexedDB.
    Bump VERSION when the SHELL list changes. */
-const VERSION = 'lf-shell-16';
+const VERSION = 'lf-shell-17';
 const FONTS = 'lf-fonts-1';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.json',

@@ -57,16 +57,33 @@ function begin(r){
   timer = setInterval(show, 1000);
   wake(true);
 }
-async function startNew(){
-  if(rec) return;
-  if(!(await db.ready())){ flash('This browser is blocking on-device storage, so tracks cannot be saved.', 5000); return; }
-  LF.closeTools();
+/* o.round: the disc golf round this track belongs to (it runs for the whole round; dgscore.js ends it). */
+async function startNew(o){
+  o = o || {};
+  if(rec) return null;
+  if(!(await db.ready())){ flash('This browser is blocking on-device storage, so tracks cannot be saved.', 5000); return null; }
+  if(!o.round) LF.closeTools();
   const now = Date.now();
-  begin({ id:db.newId(), recording:true, started:now, pausedMs:0, points:[], color:'#d62828' });
+  begin(Object.assign({ id:db.newId(), recording:true, started:now, pausedMs:0, points:[], color:'#d62828' }, o.round ? { round:o.round, name:o.name || '' } : {}));
+  if(!rec) return null;
   await save(true);
   db.persist();
-  flash('Recording. Keep Line Fence open and the screen on.', 4000);
+  flash(o.round ? 'Recording a track of the round. Keep Line Fence open.' : 'Recording. Keep Line Fence open and the screen on.', 4000);
   if(LF.gps.last && Date.now() - LF.gps.last.t < 10000) onFix(LF.gps.last);
+  return rec.id;
+}
+/* A round's track when the round ends: keep it (tidied, named, in a folder) or throw it away. Returns the saved track. */
+async function endFor(roundId, keep, o){
+  if(!rec || rec.round !== roundId) return null;
+  if(pausedAt){ rec.pausedMs = (rec.pausedMs || 0) + Date.now() - pausedAt; pausedAt = null; }
+  clearInterval(timer); timer = null; LF.gps.stop('track'); wake(false);
+  chip.hidden = true;
+  const r = rec; rec = null;
+  if(line){ line.remove(); line = null; }
+  if(!keep || r.points.length < 2){ await db.del('tracks', r.id); if(keep) flash('The track was too short to save', 3000); return null; }
+  r.recording = false; r.ended = r.points[r.points.length - 1][3] || Date.now();
+  r.points = tidy(r.points); Object.assign(r, o || {});
+  return db.put('tracks', r);
 }
 function pause(){
   if(!rec) return;
@@ -122,6 +139,8 @@ db.ready().then(ok => ok && db.all('tracks')).then(all => {
   const open = (all || []).find(t => t.recording);
   if(!open) return;
   begin(open);
+  // A round's track saved in the last half hour carries straight on (the page was reloaded mid-round).
+  if(open.round && Date.now() - (open.updated || 0) < 30 * 60000){ flash('Still recording your round.', 3000); return; }
   // Paused since its last save: the time the page was closed doesn't count as moving,
   // and the user decides whether to carry on (they may be home already).
   pausedAt = Math.min(Date.now(), open.updated || Date.now());
@@ -129,5 +148,5 @@ db.ready().then(ok => ok && db.all('tracks')).then(all => {
   flash('You have an unfinished track. Resume or Stop it at the top.', 6000);
 });
 
-LF.track = { start:startNew, recording:() => !!rec };
+LF.track = { start:startNew, recording:() => !!rec, current:() => rec && { id:rec.id, round:rec.round || null, points:rec.points.length, m:geo.length(rec.points), ms:movingMs() }, endFor };
 })(window.LF);

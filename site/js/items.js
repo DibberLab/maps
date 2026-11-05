@@ -345,6 +345,7 @@ function details(store, r){
     rows.push(['Line width', String(r.weight || (store === 'tracks' ? 4 : 3))]);
   }
   if(r.sourceId) rows.push(['Imported ID', `<span class="mono">${esc(r.sourceId)}</span>`]);
+  if(r.gpsAcc) rows.push(['GPS accuracy', `about ±${Math.round(r.gpsAcc * 3.28084)} ft${r.gpsN ? ` (averaged ${r.gpsN} readings)` : ''}`]);
   const extra = Object.entries(r.extra || {});
   return '<div class="block"><dl>' + rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('') + '</dl>' +
     (extra.length ? '<h3>More from the file</h3><dl>' + extra.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl>' : '') + '</div>';
@@ -503,7 +504,8 @@ function shrink(file){
 /* ---------- Creating ---------- */
 LF.items = {
   open, ICONS,
-  newWaypoint(ll, o){ edit('waypoints', { lat:+ll[0].toFixed(6), lng:+ll[1].toFixed(6), icon:'pin', name:(o && o.name) || '' }, true); },
+  newWaypoint(ll, o){ o = o || {}; edit('waypoints', Object.assign({ lat:+(+ll[0]).toFixed(7), lng:+(+ll[1]).toFixed(7), icon:'pin', name:o.name || '' },
+    o.gpsAcc ? { gpsAcc:o.gpsAcc, gpsN:o.gpsN } : {}), true); },
   newDrawing(d){ edit('drawings', d, true); },
   newTrack(t){ edit('tracks', t, true); },
   goto,

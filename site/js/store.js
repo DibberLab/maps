@@ -8,7 +8,7 @@ window.LF = window.LF || {};
 
 /* Tiny event bus shared by the app's scripts: LF.listen('pin', fn), LF.emit('pin'). */
 const bus = {};
-LF.listen = (name, fn) => { (bus[name] = bus[name] || []).push(fn); };
+LF.listen = (name, fn) => { (bus[name] = bus[name] || []).push(fn); return () => { bus[name] = bus[name].filter(f => f !== fn); }; };   // returns an unsubscribe
 LF.emit = (name, arg) => (bus[name] || []).forEach(fn => { try{ fn(arg); }catch(e){ console.error(e); } });
 
 LF.prefs = {

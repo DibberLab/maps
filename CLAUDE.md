@@ -32,8 +32,14 @@ site/                 the whole app: static files, no build step
   js/hover.js         desktop hover preview of trails/roads/landings/trout water: glow + name tip = what a click opens
   js/search.js        address/coordinate search (Nominatim) and the GPS button
   js/geo.js           distance, acres, bearing, climb, US-unit formatting, GPX/KML export and import (pure; runs in Node)
-  js/gps.js           one shared GPS watch (LF.gps.start/stop by user name: 'button', 'track', 'goto'); emits 'gps'.
+  js/gps.js           one shared GPS watch (LF.gps.start/stop by user name: 'button', 'track', 'goto', 'mark'); emits 'gpsRaw'
+                      (every reading) and 'gps' (smoothed). maximumAge 0. smooth(): Kalman-style, weight by reported accuracy,
+                      process noise from speed (phone's, or 6 s drift of raw readings), skips a far-off reading unless 3 agree.
                       Only a permission denial stops it; signal dropouts just flash "Weak GPS signal".
+                      Waypoint "Use my location (averaged)" (draw.js averageHere): weighted mean of raw readings, worst third
+                      dropped, up to 30 s or ±2 m; saved as r.gpsAcc / r.gpsN and shown on the card. Tracks: readings needing
+                      > 45 m/s are dropped; on stop, track.js tidy() removes out-and-back spikes and lightly smooths (LF.trackTidy).
+                      LF.listen returns an unsubscribe.
   js/items.js         saved waypoints/drawings/tracks: map rendering, view and edit sheets, photos (1280 px JPEG data URLs),
                       Go to guide, the saved list, GPX/KML export and import
                       Folders: r.folder name ("A / B" nests); the list groups by folder (switch, rename, remove, delete), Select mode

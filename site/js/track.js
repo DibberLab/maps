@@ -40,6 +40,8 @@ function onFix(fix){
   if(fix.acc > MAX_ACC) return;
   const last = rec.points[rec.points.length - 1];
   if(last && geo.dist(last, fix.ll) < Math.max(4, fix.acc / 3)) return;
+  // Nothing you carry moves faster than this: a point that would need it is a glitch.
+  if(last && last[3] && fix.t > last[3] && geo.dist(last, fix.ll) / ((fix.t - last[3]) / 1000) > 45) return;
   rec.points.push([+fix.ll[0].toFixed(6), +fix.ll[1].toFixed(6), fix.alt != null ? +fix.alt.toFixed(1) : null, fix.t]);
   line.addLatLng(fix.ll); dirty = true;
   if(Date.now() - lastSave > SAVE_MS) save();
@@ -84,10 +86,26 @@ async function finish(){
     flash('Track was too short to save', 3000); return;
   }
   r.recording = false; r.ended = r.points[r.points.length - 1][3] || Date.now();
+  r.points = tidy(r.points);
   await db.put('tracks', r);
   LF.items.editTrack(r.id);
 }
 
+/* When a track stops: drop out-and-back spikes (a point far off a line that comes straight back) and smooth the
+   rest lightly (each point nudged a quarter of the way toward its neighbours' midpoint; the ends stay). */
+function tidy(pts){
+  if(pts.length < 4) return pts;
+  let out = pts.slice();
+  for(let pass = 0; pass < 2; pass++){
+    out = out.filter((p, i) => { if(i === 0 || i === out.length - 1) return true;
+      const a = out[i - 1], b = out[i + 1], ab = geo.dist(a, b), l1 = geo.dist(a, p), l2 = geo.dist(p, b);
+      return !(l1 > 15 && l2 > 15 && l1 + l2 > 3 * Math.max(ab, 5)); });
+  }
+  return out.map((p, i) => { if(i === 0 || i === out.length - 1) return p;
+    const a = out[i - 1], b = out[i + 1];
+    return [+(p[0] * .75 + (a[0] + b[0]) / 8).toFixed(7), +(p[1] * .75 + (a[1] + b[1]) / 8).toFixed(7)].concat(p.slice(2)); });
+}
+LF.trackTidy = tidy;
 chip.addEventListener('click', e => {
   const a = e.target.closest('[data-a]'); if(!a) return;
   if(a.dataset.a === 'pause') pause();

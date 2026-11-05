@@ -13,6 +13,7 @@ const START = { latitude: 45.86, longitude: -92.62 };   // Crex Meadows, WI
 let failed = 0;
 const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok) failed++; };
 
+const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat - s.latitude) * r, dLn = (w.lng - s.longitude) * r * Math.cos(s.latitude * r); return R * Math.hypot(dLa, dLn); };
 (async () => {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ ...devices['Pixel 7'], acceptDownloads: true,
@@ -102,12 +103,12 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.click('#closeSheet');
   check(await count('drawings') === 3, 'three drawings saved');
 
-  // 4. Track recording with simulated walking (about 20 m per step, heading north).
+  // 4. Track recording with a simulated drive north (20 m every 0.7 s, about 64 mph: under the 100 mph glitch limit).
   await tool('track');
   await page.waitForSelector('#recChip:not([hidden])');
   for(let i = 1; i <= 12; i++){
     await ctx.setGeolocation({ latitude: START.latitude + i * 0.00018, longitude: START.longitude, accuracy: 8 });
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(700);
   }
   const rec = await page.textContent('#recChip .txt');
   check(/ft|mi/.test(rec), 'recording chip shows live stats: ' + rec);
@@ -367,7 +368,29 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.waitForSelector('#sheetBody .folder[data-f="Sort test"] .row');
   check(await names() === after, 'the new order is saved and comes back');
 
-  check(errors.length === 0, 'no script errors' + (errors.length ? ':\n  ' + errors.join('\n  ') : ''));
+  // 14. GPS: "Use my location" averages readings while you hold still, and the waypoint keeps its accuracy.
+  await page.evaluate(() => { if(!document.getElementById('sheet').hidden) LF.closeSheet(); });
+  await ctx.setGeolocation({ latitude: START.latitude, longitude: START.longitude, accuracy: 10 });
+  await tool('waypoint');
+  await page.click('#stripBtns [data-a=here]');
+  for(let i = 0; i < 6; i++){   // readings scattered ±~6 m around the true spot
+    await ctx.setGeolocation({ latitude: START.latitude + (i % 2 ? 1 : -1) * 0.00005, longitude: START.longitude + (i % 3 - 1) * 0.00006, accuracy: 10 });
+    await page.waitForTimeout(500);
+  }
+  check(/Hold still… \d+ readings? · about ±\d+ ft/.test(await page.textContent('#stripText')), 'averaging shows readings and accuracy: ' + await page.textContent('#stripText'));
+  await page.click('#stripBtns [data-a=avg-now]');
+  await page.waitForSelector('#f-name');
+  await saveForm('Averaged spot');
+  const avgWp = await page.evaluate(() => LF.db.all('waypoints').then(w => w.find(x => x.name === 'Averaged spot')));
+  check(avgWp && avgWp.gpsAcc > 0 && avgWp.gpsN >= 2 && LF_dist(avgWp, START) < 6, 'averaged waypoint lands near the true spot and keeps its accuracy: ' + (avgWp && JSON.stringify({ acc:avgWp.gpsAcc, n:avgWp.gpsN, off:Math.round(LF_dist(avgWp, START) * 10) / 10 })));
+  check(/GPS accuracy\s*about ±\d+ ft \(averaged \d+ readings\)/.test(await page.textContent('#sheetBody')), 'its card shows the GPS accuracy');
+  // Tidy: an out-and-back spike in a track is removed when it's saved.
+  const tidied = await page.evaluate(() => { const p = []; for(let i = 0; i < 10; i++) p.push([45.8 + i * 0.0002, -92.4, null, i * 1000]); p.splice(5, 0, [45.801, -92.399, null, 4500]); return LF.trackTidy(p).length; });
+  check(tidied === 10, 'a track spike is removed on save (11 points → ' + tidied + ')');
+
+  // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
+  const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
+  check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));
   await browser.close();
   console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
   process.exit(failed ? 1 : 0);

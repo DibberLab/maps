@@ -58,6 +58,7 @@ site/                 the whole app: static files, no build step
                       Grips hide in Select mode and when a type filter is on. Opening the list fresh leaves Select mode. Item details from imports: sourceId, color (+opacity), lineStyle
                       (solid|dash|dot), weight, iconName (the other app's icon name, mapped by iconFor/ICON_ALIASES), extra {}.
                       geo.js reads them from KML ExtendedData / GPX extensions / key=value descriptions and writes them back.
+                      Disc golf holes travel as dgHole / dgPar / dgFairway / dgAnchors (a KML line with them imports as a track).
                       Edit mode (geoEditor): the item is hidden from the normal layer and drawn on 'editPane' (470, pointer-events none
                       so its canvas can't swallow taps): draggable waypoint; a vertex handle per corner + ✥ move-all for lines/areas;
                       centre + edge (radius) for circles. Applied on Save only; plain tracks aren't movable. redraw() is generation-guarded.

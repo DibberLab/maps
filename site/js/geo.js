@@ -112,11 +112,13 @@ const xml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp
 const iso = t => new Date(t).toISOString();
 const shapePts = d => d.kind === 'circle' ? circlePts(d.center, d.radius) : d.points;
 
+/* A disc golf hole's details travel as dgHole / dgPar / dgFairway / dgAnchors, so a course exports and imports whole. */
+const dgFields = r => r.dg ? { dgHole:r.dg.hole, dgPar:r.dg.par, dgFairway:r.dg.fairway, dgAnchors:(r.dg.anchors || []).join(',') || null } : {};
 function toGPX(items){
   const o = ['<?xml version="1.0" encoding="UTF-8"?>',
     '<gpx version="1.1" creator="Line Fence (maps.dibberlab.me)" xmlns="http://www.topografix.com/GPX/1/1" xmlns:lf="https://maps.dibberlab.me/gpx/1">'];
   // GPX has no folders; Line Fence keeps an item's folder in an extension so its own exports round-trip.
-  const fx = r => { const f = { folder:r.folder, id:r.sourceId || r.id, color:r.color, style:r.lineStyle, weight:r.weight, icon:r.iconName };
+  const fx = r => { const f = Object.assign({ folder:r.folder, id:r.sourceId || r.id, color:r.color, style:r.lineStyle, weight:r.weight, icon:r.iconName }, dgFields(r));
     Object.assign(f, r.extra || {});
     const rows = Object.entries(f).filter(([k, v]) => v != null && v !== '' && /^[a-z][\w-]*$/i.test(k)).map(([k, v]) => `<lf:${k}>${xml(v)}</lf:${k}>`).join('');
     return rows ? `<extensions>${rows}</extensions>` : ''; };
@@ -137,7 +139,7 @@ function toGPX(items){
 const kmlColor = (hex, alpha) => { const h = (hex || '#e8590c').replace('#',''); return (alpha || 'ff') + h.slice(4,6) + h.slice(2,4) + h.slice(0,2); };
 function toKML(items){
   const coords = pts => pts.map(p => p[1] + ',' + p[0] + (p[2] != null ? ',' + p[2].toFixed(1) : '')).join(' ');
-  const data = r => { const f = { notes:r.notes, id:r.sourceId || r.id, color:r.color, style:r.lineStyle, weight:r.weight, icon:r.iconName || (r.icon ? r.icon : null) };
+  const data = r => { const f = Object.assign({ notes:r.notes, id:r.sourceId || r.id, color:r.color, style:r.lineStyle, weight:r.weight, icon:r.iconName || (r.icon ? r.icon : null) }, dgFields(r));
     Object.assign(f, r.extra || {});
     const rows = Object.entries(f).filter(([, v]) => v != null && v !== '').map(([k, v]) => `<Data name="${xml(k)}"><value>${xml(v)}</value></Data>`).join('');
     return rows ? `<ExtendedData>${rows}</ExtendedData>` : ''; };
@@ -179,7 +181,7 @@ function parseColor(v){
 }
 const normStyle = v => /dot/i.test(v) ? 'dot' : /dash/i.test(v) ? 'dash' : /solid|line/i.test(v) ? 'solid' : null;
 const KNOWN = new Set(['name', 'notes', 'note', 'desc', 'description', 'id', 'uuid', 'color', 'colour', 'style', 'linestyle', 'weight', 'width', 'linewidth',
-  'icon', 'sym', 'folder', 'type', 'hidden']);
+  'icon', 'sym', 'folder', 'type', 'hidden', 'dghole', 'dgpar', 'dgfairway', 'dganchors']);
 function kvLines(text){
   const lines = String(text || '').split(/\r?\n/), out = {};
   let n = 0;
@@ -196,6 +198,9 @@ function applyFields(item, f){
   const st = normStyle(get('style', 'linestyle') || ''); if(st) item.lineStyle = st;
   const w = parseFloat(get('weight', 'width', 'linewidth')); if(isFinite(w) && w > 0) item.weight = Math.min(12, Math.max(1, +w.toFixed(1)));
   const ic = get('icon'); if(ic) item.iconName = ic;
+  const hole = get('dghole'), par = get('dgpar');
+  if(hole || par){ const fw = parseFloat(get('dgfairway')), an = (get('dganchors') || '').split(',').map(x => parseInt(x, 10)).filter(x => isFinite(x) && x > 0);
+    item.dg = { hole:hole || '', par:par || '3', fairway:isFinite(fw) && fw > 0 ? Math.round(fw) : 0, anchors:an }; }
   const extra = {};
   Object.entries(f).forEach(([k, v]) => { if(!KNOWN.has(k) && v != null && String(v).trim() !== '') extra[k] = String(v).trim(); });
   if(Object.keys(extra).length) item.extra = extra;
@@ -266,7 +271,8 @@ function parseFile(text, Parser){
         if(p.length > 3 && p[0][0] === p[p.length-1][0] && p[0][1] === p[p.length-1][1]) p.pop();
         if(p.length >= 3) out.drawings.push({ kind:'area', name:name || 'Area', notes, points:p, folder }); }
       if(out.waypoints.length > before.waypoints) applyFields(out.waypoints[out.waypoints.length - 1], f);
-      if(out.drawings.length > before.drawings) applyFields(out.drawings[out.drawings.length - 1], f);
+      if(out.drawings.length > before.drawings){ const d = applyFields(out.drawings[out.drawings.length - 1], f);
+        if(d.dg && d.kind === 'line'){ out.drawings.pop(); delete d.kind; out.tracks.push(d); } }
     });
   } else throw new Error('Only GPX and KML files can be imported.');
   return out;

@@ -463,6 +463,11 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Disc golf / Test Park")');
   check(await page.isHidden('.coursebar') && await page.evaluate(() => !LF.mode), 'Done closes the bar and opens the course folder');
 
+  const rtrip = await page.evaluate(() => LF.db.all('tracks').then(ts => { const h = ts.filter(t => t.dg); const g = LF.geo;
+    const a = g.parseFile(g.toGPX({ tracks:h })).tracks, b = g.parseFile(g.toKML({ tracks:h })).tracks;
+    return { n:h.length, gpx:a.map(t => t.dg && t.dg.hole + '/' + t.dg.par).sort().join(','), kml:b.map(t => t.dg && t.dg.hole + '/' + t.dg.par).sort().join(','), folder:a[0] && a[0].folder }; }));
+  check(rtrip.n === 2 && rtrip.gpx === '1/3,2/4' && rtrip.kml === '1/3,2/4' && rtrip.folder === 'Disc golf / Test Park', 'a course exported to GPX or KML imports back as disc golf holes: ' + JSON.stringify(rtrip));
+
   // 17. Disc golf: score a round on the course just mapped (2 holes: par 3, par 4), me against Ben.
   await page.evaluate(() => { if(!document.getElementById('sheet').hidden) LF.closeSheet(); });
   await tool('dgscore');
@@ -529,6 +534,8 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
 
   // 19. Disc golf: measure throws. Standing on hole 1's tee pad offers its saved spot; walk ~100 m and mark the
   //     landing (averaged); save and throw again from there; the Throws list shows the best per disc.
+  //     (Position set before the page loads: GPS smoothing rightly ignores a lone 45 m jump.)
+  await ctx.setGeolocation({ latitude:45.86, longitude:-92.62, accuracy:6 });
   await page.goto('about:blank'); await page.goto(BASE + '#map=18/45.86/-92.62', { waitUntil:'domcontentloaded' });
   await page.waitForFunction(() => window.LF && LF.throws);
   await ctx.setGeolocation({ latitude:45.86, longitude:-92.62, accuracy:6 });

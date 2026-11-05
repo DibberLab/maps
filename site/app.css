@@ -363,3 +363,12 @@ button.brand .burger{margin-right:12px}
 /* Hover preview (hover.js): the name of what a click will open. */
 .hover-tip{position:absolute;z-index:900;pointer-events:none;background:rgba(20,28,24,.9);color:#fff;font:600 13px/1.2 var(--body);padding:5px 9px;border-radius:5px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)}
 .leaflet-container.hover-rec{cursor:pointer}
+
+/* Disc golf holes (items.js drawHole / dgEditor). */
+.row3{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:10px}
+.dg-arrow{pointer-events:none}
+.dg-arrow svg{display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
+.dg-end .wp{border-radius:6px}
+.edit-h.dg-tee i,.edit-h.dg-basket i{inset:0;border-radius:8px;background:#0f766e;color:#fff;border:3px solid #fff}
+.edit-h.dg-anchor i{border-color:#0f766e}
+.edit-h.implied i{opacity:.55;border-style:dashed}

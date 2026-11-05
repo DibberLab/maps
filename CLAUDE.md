@@ -42,7 +42,15 @@ site/                 the whole app: static files, no build step
                       geo.js reads them from KML ExtendedData / GPX extensions / key=value descriptions and writes them back.
                       Edit mode (geoEditor): the item is hidden from the normal layer and drawn on 'editPane' (470, pointer-events none
                       so its canvas can't swallow taps): draggable waypoint; a vertex handle per corner + ✥ move-all for lines/areas;
-                      centre + edge (radius) for circles. Applied on Save only; tracks aren't movable. redraw() is generation-guarded.
+                      centre + edge (radius) for circles. Applied on Save only; plain tracks aren't movable. redraw() is generation-guarded.
+                      Disc golf holes: a track with r.dg = {hole, par, fairway (ft), anchors:[point indexes]}. Words: the hole is the
+                      whole thing (tee pad + fairway + basket); start = tee pad (icon dgtee), end = basket (dgbasket; both also
+                      waypoint icons). Drawn by drawHole: fairway band in real feet (restyled on zoom), arrows tee→basket, tee label
+                      "Hole N · Par P · length". Edit (Type: Disc golf hole) uses dgEditor: drag tee/basket and the line bends back to
+                      the nearest anchor (linear falloff by arc length); tap the line to add an anchor, tap one to remove it; with no
+                      anchors the middle point is the built-in one. Folder ⋯ "Make its tracks disc golf holes" and Select-mode
+                      "Make disc golf holes" set r.dg (hole # from the name: holeFromName). Track points are [lat,lng,alt,t]:
+                      pass [p[0],p[1]] to Leaflet (it rejects 4-element arrays).
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

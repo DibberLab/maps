@@ -310,6 +310,44 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   const ar2 = await page.evaluate(() => LF.db.get('drawings', 'drag-area'));
   check(JSON.stringify(ar2.points) === JSON.stringify(ar.points) && await page.locator('.edit-h').count() === 0, 'Cancel puts it back and removes the handles');
 
+  // 12. Disc golf holes: a folder's tracks become holes in one tap; editing a hole drags the tee/basket and bends to anchors.
+  await page.evaluate(async () => { if(!document.getElementById('sheet').hidden) LF.closeSheet();
+    LF.map.setView([45.8005, -92.4005], 18, { animate:false });
+    const pts = []; for(let i = 0; i <= 40; i++){ const t = i / 40; pts.push([45.8 + t * 0.001, -92.401 + t * 0.001 + Math.sin(t * Math.PI) * 0.0002, null, Date.now() + i * 1000]); }
+    await LF.db.put('tracks', { id:'dg-hole', name:'Hole 7', folder:'Fish Lake Disc Golf Course', points:pts, started:Date.now(), ended:Date.now() + 40000 });
+    await LF.db.put('tracks', { id:'dg-other', name:'Hole 8 walk', folder:'Fish Lake Disc Golf Course', points:pts.map(p => [p[0] + .002, p[1], p[2], p[3]]) }); });
+  await page.evaluate(() => LF.items.list({ folder:'Fish Lake Disc Golf Course' }));
+  await page.click('#sheetBody .folder[data-f="Fish Lake Disc Golf Course"] [data-act=fmenu]');
+  await page.click('#sheetBody [data-act=f-dg]');
+  await page.waitForTimeout(600);
+  const marked = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.folder === 'Fish Lake Disc Golf Course').map(x => x.dg && x.dg.hole)));
+  check(marked.length === 2 && marked.includes('7') && marked.includes('8'), 'folder action marks its tracks as disc golf holes, hole # from the name: ' + marked.join(','));
+  await page.evaluate(() => { LF.closeSheet(); LF.map.setView([45.8005, -92.4005], 18, { animate:false }); });
+  await page.waitForTimeout(500);
+  check(await page.locator('.dg-end').count() >= 2 && await page.locator('.dg-arrow').count() >= 1, 'a hole draws a tee, a basket and direction arrows');
+  await page.evaluate(() => LF.items.open('tracks', 'dg-hole'));
+  await page.click('[data-act=edit]');
+  await page.evaluate(() => LF.tuckSheet(true));
+  await page.waitForSelector('.edit-h.dg-basket');
+  check(await page.locator('.edit-h.dg-tee').count() === 1 && await page.locator('.edit-h.implied').count() === 1, 'editing a hole shows tee, basket and the built-in middle anchor');
+  // Tap the line a quarter of the way along to drop an anchor.
+  const tapAt = await page.evaluate(async () => { const t = await LF.db.get('tracks', 'dg-hole'); const p = t.points[10]; const c = LF.map.latLngToContainerPoint([p[0], p[1]]), r = LF.map.getContainer().getBoundingClientRect(); return { x:c.x + r.left, y:c.y + r.top }; });
+  await page.mouse.click(tapAt.x, tapAt.y);
+  await page.waitForTimeout(200);
+  check(await page.locator('.edit-h.dg-anchor:not(.implied)').count() === 1, 'tapping the line drops an anchor');
+  const bb = await page.locator('.edit-h.dg-basket').boundingBox();
+  await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.mouse.down();
+  await page.mouse.move(bb.x + 60, bb.y + 20, { steps:4 }); await page.mouse.move(bb.x + 100, bb.y + 40, { steps:4 }); await page.mouse.up();
+  await page.screenshot({ path: path.join(OUT, 'tools-dghole.png') });
+  await page.evaluate(() => LF.tuckSheet(false));
+  await page.selectOption('#f-fair', '30');
+  await page.click('[data-act=save]');
+  await page.waitForFunction(() => !/^Edit /.test(document.querySelector('#sheetHead h2').textContent));
+  const h = await page.evaluate(async () => { const t = await LF.db.get('tracks', 'dg-hole'); return { a:t.dg.anchors, f:t.dg.fairway, p0:t.points[0], p10:t.points[10], pEnd:t.points[t.points.length - 1], n:t.points.length }; });
+  check(h.a.length === 1 && h.f === 30 && h.n === 41, 'the hole saves its anchor and a 30 ft fairway: ' + JSON.stringify({ a:h.a, f:h.f }));
+  check(h.pEnd[1] > -92.4 + 0.00005 && Math.abs(h.p0[0] - 45.8) < 1e-9, 'dragging the basket moved the end and left the tee where it was');
+  check(Math.abs(h.p10[0] - (45.8 + 0.00025)) < 1e-6, 'the anchor held still while the line bent from it');
+
   check(errors.length === 0, 'no script errors' + (errors.length ? ':\n  ' + errors.join('\n  ') : ''));
   await browser.close();
   console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

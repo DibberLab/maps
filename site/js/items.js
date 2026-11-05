@@ -53,10 +53,14 @@ const ICONS = {
   flag:     ['Flag',         '<path d="M5 21V4M5 4h12l-3 4 3 4H5"/>', '#d62828'],
   star:     ['Favorite',     '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>', '#d9a21b'],
   photo:    ['Photo',        '<rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/>', '#8a6bb8'],
+  // Disc golf
+  dgtee:    ['Disc Golf Tee Pad', '<rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9.5 8h5M12 8v8"/>', '#0f766e'],
+  dgbasket: ['Disc Golf Basket',  '<path d="M12 3v18M8 21h8M6 6h12M6.5 6l1 4h9l1-4M8 10l1.5 4h5L16 10"/>', '#0f766e'],
   pin:      ['Waypoint',     '<circle cx="12" cy="12" r="3.5" fill="currentColor"/>', '#e8590c']
 };
 /* Names other apps use for the same marks (onX Hunt and others), matched loosely ("Creek Crossing" -> crossing). */
-const ICON_ALIASES = { treestand:'stand', stand:'stand', ladderstand:'stand', climber:'stand', groundblind:'blind', blind:'blind', duckblind:'blind',
+const ICON_ALIASES = { teepad:'dgtee', tee:'dgtee', discgolftee:'dgtee', discgolfteepad:'dgtee', basket:'dgbasket', discgolfbasket:'dgbasket',
+  treestand:'stand', stand:'stand', ladderstand:'stand', climber:'stand', groundblind:'blind', blind:'blind', duckblind:'blind',
   trailcamera:'camera', trailcam:'camera', camera:'camera', cellcam:'camera', feeder:'feeder', foodsource:'food', foodplot:'food', food:'food', crops:'food', mast:'food',
   water:'water', watersource:'water', pond:'water', bedding:'bedding', bed:'bedding', beddingarea:'bedding', scrape:'scrape', rub:'rub',
   tracks:'tracks', track:'tracks', sign:'tracks', scat:'scat', droppings:'scat', crossing:'crossing', creekcrossing:'crossing', fencecrossing:'crossing',
@@ -86,6 +90,10 @@ LF.ICONS = ICONS;
 /* ---------- Stats ---------- */
 function stats(store, r){
   if(store === 'waypoints') return [];
+  if(store === 'tracks' && r.dg){
+    const m = geo.length(r.points);
+    return [['Length', geo.fmtFt(m)], ['Hole', r.dg.hole || '—'], ['Par', r.dg.par || '—'], ['Fairway', r.dg.fairway ? r.dg.fairway + ' ft wide' : '—']];
+  }
   if(store === 'tracks'){
     const m = geo.length(r.points), ms = trackMs(r);
     return [['Distance', geo.fmtDist(m)], ['Moving time', geo.fmtTime(ms)], ['Pace', geo.fmtPace(ms, m)],
@@ -162,23 +170,124 @@ async function redraw(){
         .on('click', tap('drawings', d)).addTo(layer);
     }
   });
+  dgBands = [];
   trs.filter(t => !t.recording && t.points.length > 1).forEach(t => {
-    L.polyline(t.points.map(p => [p[0], p[1]]), lineOpts(Object.assign({ color:t.color || '#d62828' }, t), 4))
+    const ll = t.points.map(p => [p[0], p[1]]);
+    if(t.dg) drawHole(t, ll);
+    L.polyline(ll, lineOpts(Object.assign({ color:t.color || (t.dg ? DG : '#d62828') }, t), 4))
       .on('click', tap('tracks', t)).addTo(layer);
   });
   wps.forEach(w => L.marker([w.lat, w.lng], { pane:'savedMarkers', icon:wpIcon(w), title:w.name, riseOnHover:true, zIndexOffset:1000 })
     .on('click', tap('waypoints', w)).addTo(layer));
 }
+/* ---------- Disc golf holes ----------
+   Words: a "hole" is the whole thing (tee pad + fairway + basket); the start point is the tee pad, the end point the basket.
+   A track can be marked a disc golf hole (r.dg = { hole, par, fairway (ft), anchors:[point indexes] }). It's drawn with
+   a fairway band of that real width (rescaled as you zoom), arrows from tee to basket, a tee pad at the start and a
+   basket at the end. Its edit mode lets you drag the tee, the basket and anchors (see dgEditor). */
+const DG = '#0f766e';
+let dgBands = [];
+const mPerPx = lat => 156543.03 * Math.cos(lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+const bandPx = (ft, lat) => Math.max(3, ft * 0.3048 / mPerPx(lat));
+map.on('zoomend', () => dgBands.forEach(b => b.setStyle({ weight:bandPx(b.ft, b.lat) })));
+/* Where a fraction of the way along a path is, and which way the path heads there. */
+function along(ll, frac){
+  const cum = [0]; for(let i = 1; i < ll.length; i++) cum.push(cum[i - 1] + geo.dist(ll[i - 1], ll[i]));
+  const want = cum[cum.length - 1] * frac; let i = 1; while(i < ll.length - 1 && cum[i] < want) i++;
+  const seg = cum[i] - cum[i - 1] || 1, t = (want - cum[i - 1]) / seg, a = ll[i - 1], b = ll[i];
+  return { ll:[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], brg:geo.bearing(a, b) };
+}
+const dgIcon = (k, label) => L.divIcon({ className:'wp-wrap dg-end', iconSize:[30, 30], iconAnchor:[15, 15],
+  html:`<div class="wp" style="background:${DG};color:#fff">${glyph(k, 17)}</div>${label ? `<div class="wp-label">${esc(label)}</div>` : ''}` });
+const arrowIcon = brg => L.divIcon({ className:'dg-arrow', iconSize:[18, 18], iconAnchor:[9, 9],
+  html:`<svg viewBox="0 0 24 24" width="18" height="18" style="transform:rotate(${brg}deg)"><path d="M12 3 20 19 12 14 4 19z" fill="#fff" stroke="${DG}" stroke-width="2.5" stroke-linejoin="round"/></svg>` });
+function drawHole(t, ll){
+  const c = t.color || DG, lat = ll[0][0];
+  if(t.dg.fairway){ const band = L.polyline(ll, { pane:'savedPane', renderer:touchy, color:c, opacity:.22, weight:bandPx(t.dg.fairway, lat), lineCap:'round', lineJoin:'round' })
+    .on('click', tap('tracks', t)).addTo(layer); band.ft = t.dg.fairway; band.lat = lat; dgBands.push(band); }
+  const len = geo.length(ll), n = Math.max(1, Math.min(6, Math.round(len / 45)));
+  for(let i = 0; i < n; i++){ const a = along(ll, (i + .5) / n);
+    L.marker(a.ll, { pane:'savedMarkers', interactive:false, keyboard:false, icon:arrowIcon(a.brg) }).addTo(layer); }
+  const label = [t.dg.hole ? 'Hole ' + t.dg.hole : t.name, t.dg.par ? 'Par ' + t.dg.par : '', geo.fmtFt(len)].filter(Boolean).join(' · ');
+  L.marker(ll[0], { pane:'savedMarkers', icon:dgIcon('dgtee', label), title:'Tee: ' + (t.name || ''), zIndexOffset:900 }).on('click', tap('tracks', t)).addTo(layer);
+  L.marker(ll[ll.length - 1], { pane:'savedMarkers', icon:dgIcon('dgbasket'), title:'Basket: ' + (t.name || ''), zIndexOffset:900 }).on('click', tap('tracks', t)).addTo(layer);
+}
+
+/* "Hole 7", "#7", "H7" or a bare "7" in a track's name gives its hole number. */
+const holeFromName = n => { const m = String(n || '').match(/(?:hole|#|\bh)\s*(\d{1,2})\b/i) || String(n || '').match(/^\s*(\d{1,2})\s*$/); return m ? m[1] : ''; };
+/* Editing a hole: drag the tee or the basket and the line bends back to the nearest anchor (the end moves fully, the
+   anchor not at all, the points between in proportion to how far along they are). Tap the line to drop an anchor,
+   drag one to reshape between its neighbours, tap one to remove it. With no anchors, the middle of the line is the
+   built-in one (shown faint; dragging it makes it a real anchor). */
+function dgEditor(r, color, onMove){
+  const g = L.layerGroup().addTo(map), svg = L.svg({ pane:'editPane' });
+  const st = { points:r.points.map(p => p.slice()), anchors:((r.dg && r.dg.anchors) || []).filter(i => i > 0 && i < r.points.length - 1).sort((a, b) => a - b) };
+  editing = { id:r.id }; redraw();
+  const last = () => st.points.length - 1;
+  const lls = () => st.points.map(p => [p[0], p[1]]);
+  const cumOf = pts => { const c = [0]; for(let i = 1; i < pts.length; i++) c.push(c[i - 1] + geo.dist(pts[i - 1], pts[i])); return c; };
+  const midIndex = () => { const c = cumOf(st.points), half = c[c.length - 1] / 2; let i = 1; while(i < last() && c[i] < half) i++; return i; };
+  const anchorsOrMid = () => st.anchors.length ? st.anchors : [midIndex()];
+  const line = L.polyline(lls(), { pane:'editPane', renderer:svg, color, weight:4, dashArray:'7 6', interactive:false }).addTo(g);
+  // A wide invisible line over it takes the taps that drop anchors.
+  const hit = L.polyline(lls(), { pane:'editPane', renderer:svg, color:'#000', opacity:.001, weight:28, interactive:true, bubblingMouseEvents:false }).addTo(g);
+  const handles = L.layerGroup().addTo(g);
+  const refresh = () => { line.setLatLngs(lls()); hit.setLatLngs(lls()); onMove(); };
+  /* Move points lo..hi by delta × weight(i), weight from the drag start's arc lengths. */
+  function bend(orig, from, to, lo, hi, weight){
+    for(let i = lo; i <= hi; i++){ const w = weight(i); st.points[i][0] = orig[i][0] + (to.lat - from.lat) * w; st.points[i][1] = orig[i][1] + (to.lng - from.lng) * w; }
+  }
+  function build(){
+    handles.clearLayers();
+    const mk = (i, cls, html, size) => L.marker([st.points[i][0], st.points[i][1]], { pane:'editPane', draggable:true, autoPan:true, zIndexOffset:3000, keyboard:false,
+      icon:L.divIcon({ className:'edit-h ' + cls, iconSize:[size || 36, size || 36], iconAnchor:[(size || 36) / 2, (size || 36) / 2], html }) }).addTo(handles);
+    let orig = null, cum = null, from = null;
+    const start = e => { orig = st.points.map(p => p.slice()); cum = cumOf(orig); from = e.target.getLatLng(); };
+    // The tee: bends from the start back to the first anchor.
+    mk(0, 'dg-tee', `<i>${glyph('dgtee', 18)}</i>`, 40).on('dragstart', start).on('drag', e => {
+      const a = anchorsOrMid()[0]; bend(orig, from, e.target.getLatLng(), 0, a, i => (cum[a] - cum[i]) / (cum[a] || 1)); refresh(); }).on('dragend', build);
+    // The basket: bends from the end back to the last anchor.
+    mk(last(), 'dg-basket', `<i>${glyph('dgbasket', 18)}</i>`, 40).on('dragstart', start).on('drag', e => {
+      const as = anchorsOrMid(), a = as[as.length - 1], n = last();
+      bend(orig, from, e.target.getLatLng(), a, n, i => (cum[i] - cum[a]) / ((cum[n] - cum[a]) || 1)); refresh(); }).on('dragend', build);
+    // Anchors (or the faint built-in one): drag to reshape between the neighbours; tap a real one to remove it.
+    const list = st.anchors.length ? st.anchors : [midIndex()];
+    list.forEach((a, k) => {
+      const real = !!st.anchors.length, h = mk(a, 'vertex dg-anchor' + (real ? '' : ' implied'), '<i></i>', 30);
+      h.on('dragstart', e => { start(e); if(!real) st.anchors = [a]; });
+      h.on('drag', e => { const prev = k > 0 ? list[k - 1] : 0, next = k < list.length - 1 ? list[k + 1] : last(), to = e.target.getLatLng();
+        bend(orig, from, to, prev, a, i => (cum[i] - cum[prev]) / ((cum[a] - cum[prev]) || 1));
+        bend(orig, from, to, a + 1, next, i => (cum[next] - cum[i]) / ((cum[next] - cum[a]) || 1)); refresh(); });
+      h.on('dragend', build);
+      if(real) h.on('click', () => { st.anchors = st.anchors.filter(x => x !== a); build(); onMove(); });
+    });
+  }
+  hit.on('click', e => {
+    // Drop an anchor at the nearest point of the line (not on the ends, not on top of another anchor).
+    const P = map.latLngToLayerPoint(e.latlng); let best = -1, bd = Infinity;
+    st.points.forEach((p, i) => { const d = map.latLngToLayerPoint([p[0], p[1]]).distanceTo(P); if(d < bd){ bd = d; best = i; } });
+    if(best <= 0 || best >= last() || st.anchors.some(a => Math.abs(a - best) < 2)) return;
+    st.anchors = st.anchors.concat(best).sort((a, b) => a - b); build(); onMove();
+  });
+  build();
+  const r6 = v => +(+v).toFixed(6);
+  return {
+    result(){ return { points:st.points.map(p => [r6(p[0]), r6(p[1])].concat(p.slice(2))), dgAnchors:st.anchors.slice() }; },
+    stats(){ return Object.assign({}, r, { points:st.points }); },
+    stop(){ map.removeLayer(g); if(editing && editing.id === r.id){ editing = null; redraw(); } }
+  };
+}
+
 /* ---------- Moving and reshaping while editing ----------
    While an item's edit panel is open it's drawn as an editable copy instead: a waypoint you can drag; a line or
    area with a white dot on every corner and a ✥ handle that moves the whole shape; a circle with a centre handle
    and an edge handle that sets the radius. Nothing is saved until Save; Cancel puts it back. Tracks are recorded
-   paths, so they stay put. */
+   paths and stay put, except disc golf holes (dgEditor). */
 map.createPane('editPane'); map.getPane('editPane').style.zIndex = 470;
 map.getPane('editPane').style.pointerEvents = 'none';   // its canvas mustn't swallow taps; the handles take their own
 let editing = null;
-function geoEditor(store, r, color, onMove){
-  if(store === 'tracks') return null;
+function geoEditor(store, r, color, onMove, dg){
+  if(store === 'tracks') return dg ? dgEditor(r, color, onMove) : null;
   const g = L.layerGroup().addTo(map), st = { lat:r.lat, lng:r.lng, points:(r.points || []).map(p => [p[0], p[1]]), center:r.center && [r.center[0], r.center[1]], radius:r.radius };
   editing = { id:r.id }; redraw();
   const ll = x => [x.lat, x.lng];
@@ -244,7 +353,7 @@ function details(store, r){
 /* ---------- Viewing an item ---------- */
 const head = (store, r) => {
   const icon = store === 'waypoints' ? `<span class="wp inline" style="background:${wpColor(r)};color:${inkOn(wpColor(r))}">${glyph(r.icon, 16)}</span>` : '';
-  const kind = store === 'waypoints' ? iconLabel(r) : KIND[store === 'tracks' ? 'tracks' : r.kind];
+  const kind = store === 'waypoints' ? iconLabel(r) : store === 'tracks' && r.dg ? 'Disc golf hole' : KIND[store === 'tracks' ? 'tracks' : r.kind];
   return `<h2>${icon}${esc(r.name || kind)}</h2><div><span class="tag saved">${esc(kind)}</span></div>` +
     `<div class="small mono">${geo.fmtLL(where(store, r))}</div>`;
 };
@@ -306,31 +415,41 @@ function edit(store, r, isNew, back){
     `<label class="swatch custom${color && !COLORS.includes(color) ? ' on' : ''}" title="Any color" style="${color && !COLORS.includes(color) ? 'background:' + color : ''}">` +
       `<input type="color" data-act="color-any" value="${/^#[0-9a-f]{6}$/i.test(color) ? color : '#e8590c'}" aria-label="Pick any color">+</label>`;
   const thumbs = () => photos.map((p, i) => `<span class="thumb"><img src="${p}" alt=""><button type="button" data-act="rmphoto" data-i="${i}" aria-label="Remove photo">✕</button></span>`).join('');
-  const kindName = store === 'waypoints' ? 'waypoint' : store === 'tracks' ? 'track' : KIND[r.kind].toLowerCase();
+  const kindName = store === 'waypoints' ? 'waypoint' : store === 'tracks' ? (r.dg ? 'disc golf hole' : 'track') : KIND[r.kind].toLowerCase();
   const html = `<form class="edit" onsubmit="return false">
     <label>Name<input id="f-name" maxlength="80" value="${esc(r.name || '')}" placeholder="Name this ${kindName}"></label>
     ${store === 'waypoints' ? `<div class="lbl">Icon</div><div class="icons" id="f-icons">${iconBtns()}</div>` : ''}
     <div class="lbl">Color</div><div class="swatches" id="f-colors">${colorBtns()}</div>
     ${store !== 'waypoints' ? `<div class="row2"><label>Line style<select id="f-style">${Object.entries(STYLES).map(([k, v]) => `<option value="${k}"${k === lineStyle ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
       <label>Line width<select id="f-weight">${[2, 3, 4, 5, 6, 8, 10].concat([weight]).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b).map(v => `<option value="${v}"${v === weight ? ' selected' : ''}>${v}</option>`).join('')}</select></label></div>` : ''}
+    ${store === 'tracks' ? `<label>Type<select id="f-type" data-act="type"><option value="track"${r.dg ? '' : ' selected'}>Track</option><option value="dg"${r.dg ? ' selected' : ''}>Disc golf hole</option></select></label>
+      <div id="f-dg"${r.dg ? '' : ' hidden'}><div class="row3"><label>Hole #<input id="f-hole" maxlength="6" inputmode="numeric" value="${esc((r.dg && r.dg.hole) || '')}"></label>
+        <label>Par<select id="f-par">${['', 2, 3, 4, 5, 6].map(v => `<option value="${v}"${String(v) === String((r.dg && r.dg.par) || '') ? ' selected' : ''}>${v || '—'}</option>`).join('')}</select></label>
+        <label>Fairway<select id="f-fair">${[0, 10, 15, 20, 30, 40, 60, 80].map(v => `<option value="${v}"${v === ((r.dg && r.dg.fairway) || 0) ? ' selected' : ''}>${v ? v + ' ft' : 'None'}</option>`).join('')}</select></label></div></div>` : ''}
     <label>Folder<input id="f-folder" list="f-folders" maxlength="60" value="${esc(r.folder || '')}" placeholder="None (type a new one or pick)"><datalist id="f-folders"></datalist></label>
     <label>Notes<textarea id="f-notes" rows="3" maxlength="4000" placeholder="Anything to remember">${esc(r.notes || '')}</textarea></label>
     ${store === 'waypoints' ? `<div class="lbl">Photos</div><div class="thumbs" id="f-photos">${thumbs()}</div>
       <label class="btn">Add photo<input type="file" accept="image/*" multiple hidden data-act="addphoto"></label>` : ''}
     <div class="btnrow acts"><button type="button" class="btn primary" data-act="save">Save</button><button type="button" class="btn" data-act="cancel">Cancel</button></div>
   </form>`;
-  const hint = store === 'tracks' ? '' : store === 'waypoints' ? 'Drag it on the map to move it.'
+  const DG_HINT = 'Drag the tee or basket; the line bends back to the nearest anchor. Tap the line to add an anchor, tap an anchor to remove it.';
+  const hint = store === 'tracks' ? (r.dg ? DG_HINT : '') : store === 'waypoints' ? 'Drag it on the map to move it.'
     : r.kind === 'circle' ? 'Drag ✥ to move the circle, ↔ to change its size.' : 'Drag a white dot to move that corner, or ✥ to move the whole shape.';
   const sub = x => store === 'waypoints' ? geo.fmtLL([x.lat, x.lng]) : stats(store, x).map(s => s[1]).slice(0, 2).join(' · ');
   let ged = null;
   LF.showSheet(`<h2>${isNew ? 'New' : 'Edit'} ${kindName}</h2><div class="small${store === 'waypoints' ? ' mono' : ''}" id="f-where">${esc(sub(r))}</div>` +
-    (hint ? `<div class="edit-hint">${hint}</div>` : ''),
+    `<div class="edit-hint" id="f-hint"${hint ? '' : ' hidden'}>${hint}</div>`,
     html, { pin:null, onClose:() => { if(ged) ged.stop(); if(isNew) LF.emit('drawCancelled'); }, onAct: async (act, el, e) => {
     const $ = id => document.getElementById(id);
     if(act === 'icon'){ icon = el.dataset.k; $('f-icons').innerHTML = iconBtns(); }
     if(act === 'color'){ color = el.dataset.c; $('f-colors').innerHTML = colorBtns(); if($('f-icons')) $('f-icons').innerHTML = iconBtns(); }
     if(act === 'color-any' && e && e.type === 'change'){ color = el.value.toLowerCase(); $('f-colors').innerHTML = colorBtns(); if($('f-icons')) $('f-icons').innerHTML = iconBtns(); }
     if(act === 'rmphoto'){ photos.splice(+el.dataset.i, 1); $('f-photos').innerHTML = thumbs(); }
+    if(act === 'type' && e && e.type === 'change'){
+      // Switching to a disc golf hole turns on its handles (and back off for a plain track).
+      const dg = el.value === 'dg'; $('f-dg').hidden = !dg; $('f-hint').hidden = !dg; $('f-hint').textContent = dg ? DG_HINT : '';
+      if(ged) ged.stop(); ged = startEditor(dg);
+    }
     if(act === 'addphoto'){
       for(const f of Array.from(el.files || [])){ try{ photos.push(await shrink(f)); }catch(e){ flash('Could not read that photo'); } }
       el.value = ''; $('f-photos').innerHTML = thumbs();
@@ -340,7 +459,12 @@ function edit(store, r, isNew, back){
       if(!LF.account.require(store === 'waypoints' ? 'waypoints' : store)) return;
       const rec = Object.assign({}, r, { name:$('f-name').value.trim() || defaultName(store, r), notes:$('f-notes').value.trim(), color:color || undefined });
       const folder = cleanFolder($('f-folder').value); if(folder) rec.folder = folder; else delete rec.folder;
-      if(ged) Object.assign(rec, ged.result());
+      if(ged){ const res = ged.result(); if(res.dgAnchors) delete res.dgAnchors; Object.assign(rec, res); }
+      if(store === 'tracks'){
+        if($('f-type').value === 'dg') rec.dg = { hole:$('f-hole').value.trim(), par:$('f-par').value, fairway:+$('f-fair').value,
+          anchors:ged && ged.result().dgAnchors || (r.dg && r.dg.anchors) || [] };
+        else delete rec.dg;
+      }
       if(store === 'waypoints'){ if(icon !== r.icon) delete rec.iconName; rec.icon = icon; rec.photos = photos; }
       else { rec.lineStyle = $('f-style').value; rec.weight = +$('f-weight').value; if(rec.color !== r.color) delete rec.opacity; }
       try{
@@ -350,8 +474,9 @@ function edit(store, r, isNew, back){
       }catch(e){ flash(/quota/i.test(e && e.name) ? 'Storage is full. Remove some photos or saved items.' : 'Could not save: ' + (e.message || e), 5000); }
     }
   } });
-  ged = geoEditor(store, r, color || (store === 'waypoints' ? wpColor(r) : '#e8590c'), () => {
-    const w = document.getElementById('f-where'); if(w) w.textContent = sub(ged.stats()); });
+  const startEditor = dg => geoEditor(store, r, color || (store === 'waypoints' ? wpColor(r) : r.dg || dg ? DG : '#e8590c'), () => {
+    const w = document.getElementById('f-where'); if(w && ged) w.textContent = sub(ged.stats()); }, dg);
+  ged = startEditor(!!r.dg);
   setTimeout(() => { const n = document.getElementById('f-name'); if(n && isNew && matchMedia('(pointer:fine)').matches) n.focus(); }, 50);
   allItems().then(items => { const dl = document.getElementById('f-folders'); if(dl) dl.innerHTML = folderNames(items).map(f => `<option value="${esc(f)}"></option>`).join(''); });
 }
@@ -455,7 +580,8 @@ async function allItems(){
       meta:iconLabel(r) + (me ? ' · ' + geo.fmtDist(geo.dist(me, [r.lat, r.lng])) + ' away' : '') })).sort(byNew),
     drs.map(r => ({ store:'drawings', r, icon:`<span class="swatch-sm" style="background:${r.color || '#e8590c'}"></span>`, meta:KIND[r.kind] + ' · ' + stats('drawings', r)[0][1] })).sort(byNew),
     trs.filter(r => !r.recording).map(r => ({ store:'tracks', r, icon:`<span class="swatch-sm" style="background:${r.color || '#d62828'}"></span>`,
-      meta:'Track · ' + stats('tracks', r).slice(0, 2).map(x => x[1]).join(' · ') })).sort(byNew));
+      meta:(r.dg ? 'Disc golf hole' + (r.dg.hole ? ' ' + r.dg.hole : '') + (r.dg.par ? ' · par ' + r.dg.par : '') + ' · ' + geo.fmtFt(geo.length(r.points))
+        : 'Track · ' + stats('tracks', r).slice(0, 2).map(x => x[1]).join(' · ')) })).sort(byNew));
 }
 /* A folder holds its subfolders: "Siren cabin" covers "Siren cabin / Hunting". '' is "not in a folder". */
 const under = (f, top) => { f = cleanFolder(f); return top ? f === top || f.startsWith(top + ' / ') : !f; };
@@ -493,14 +619,17 @@ async function list(opts){
       `<span class="switch" title="Show this folder on the map"><input type="checkbox" role="switch" data-act="fvis" data-f="${esc(f)}"${anyShown ? ' checked' : ''} aria-label="Show ${esc(name)} on map"><span class="knob"></span></span>` +
       (f ? `<button class="fmore" data-act="fmenu" data-f="${esc(f)}" aria-label="Folder options">⋯</button>` : '') + '</div>' +
       `<div class="fmenu" hidden><button class="btn" data-act="f-rename" data-f="${esc(f)}">Rename</button><button class="btn" data-act="f-unfile" data-f="${esc(f)}">Remove folder, keep items</button>` +
+        (arr.some(i => i.store === 'tracks' && !i.r.dg) ? `<button class="btn" data-act="f-dg" data-f="${esc(f)}">Make its tracks disc golf holes</button>` : '') +
       `<button class="btn danger" data-act="f-delete" data-f="${esc(f)}">Delete folder and items</button></div>` +
       `<div class="rows">${arr.map(row).join('')}</div></div>`;
   };
   const n = chosen.size, folders = folderNames(items);
+  const pickedItems0 = () => items.filter(i => chosen.has(keyOf(i.store, i.r)));
   const bar = selecting ? `<div class="selbar"><label class="chk"><input type="checkbox" data-act="pick-all"${n && n === items.length ? ' checked' : ''}> Select all</label>` +
       `<span class="small">${n} selected</span><button class="btn" data-act="sel-done">Done</button></div>` +
     `<div class="btnrow acts selacts"><button class="btn danger" data-act="bulk-del"${n ? '' : ' disabled'}>Delete</button><button class="btn" data-act="bulk-move"${n ? '' : ' disabled'}>Move to folder</button>` +
       `<button class="btn" data-act="bulk-hide"${n ? '' : ' disabled'}>Hide</button><button class="btn" data-act="bulk-show"${n ? '' : ' disabled'}>Show</button>` +
+      (pickedItems0().some(i => i.store === 'tracks') ? '<button class="btn" data-act="bulk-dg">Make disc golf holes</button>' : '') +
       `<button class="btn" data-act="bulk-kml"${n ? '' : ' disabled'}>Export KML</button><button class="btn" data-act="bulk-gpx"${n ? '' : ' disabled'}>Export GPX</button></div>` +
     `<div class="movebox" hidden><label>Move ${n} to<select id="mv-sel">${folders.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}<option value="__new">New folder…</option><option value="__none">Not in a folder</option></select></label>` +
       `<input id="mv-new" placeholder="New folder name" maxlength="60"${folders.length ? ' hidden' : ''}><button class="btn primary" data-act="mv-go">Move</button></div>`
@@ -531,6 +660,12 @@ async function list(opts){
     if(act === 'f-rename'){
       const to = cleanFolder(prompt('Rename folder', f) || '');
       if(to && to !== f){ await setFolder(inFolder(f), to); flash(`Renamed to “${to}”`); list(); }
+    }
+    if(act === 'f-dg' || act === 'bulk-dg'){
+      // Mark tracks as disc golf holes (a folder's, subfolders too, or the selected ones); the hole number comes from the name.
+      const arr = (act === 'f-dg' ? items.filter(i => under(i.r.folder, f)) : pickedItems()).filter(i => i.store === 'tracks' && !i.r.dg);
+      for(const i of arr) await db.put('tracks', Object.assign({}, i.r, { dg:{ hole:holeFromName(i.r.name), par:'', fairway:0, anchors:[] } }));
+      flash(`${arr.length} track${arr.length === 1 ? '' : 's'} marked as disc golf holes`); if(act === 'bulk-dg'){ chosen.clear(); selecting = false; } list();
     }
     if(act === 'f-unfile'){ await setFolder(inFolder(f), ''); flash(`Folder “${f}” removed; its items are kept`); list(); }
     if(act === 'f-delete'){

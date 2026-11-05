@@ -45,7 +45,7 @@ LF.select = {
   shape(g, o){
     o = o || {}; const color = o.color || '#e8590c', closed = !!o.closed;
     const make = st => Array.isArray(g) ? (closed ? L.polygon(g, st) : L.polyline(g, st)) : L.geoJSON(g, { style:() => st, interactive:false });
-    make({ pane:'selPane', renderer, interactive:false, color:'#ffffff', weight:(o.weight || 4) + 6, opacity:.95, fill:false, lineJoin:'round', lineCap:'round' }).addTo(group);
+    if(o.casing !== false) make({ pane:'selPane', renderer, interactive:false, color:'#ffffff', weight:(o.weight || 4) + 6, opacity:.95, fill:false, lineJoin:'round', lineCap:'round' }).addTo(group);
     make({ pane:'selPane', renderer, interactive:false, color, weight:(o.weight || 4) + 1, opacity:1, lineJoin:'round', lineCap:'round',
       fill:closed || !Array.isArray(g), fillColor:color, baseFill:o.fill != null ? o.fill : .12, fillOpacity:LF.fillOf(o.fill != null ? o.fill : .12),
       dashArray:o.dash || null }).addTo(group);

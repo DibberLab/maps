@@ -359,3 +359,7 @@ button.brand .burger{margin-right:12px}
 @keyframes editbob{50%{transform:translateY(-3px)}}
 @media (prefers-reduced-motion:reduce){.edit-wp .wp{animation:none}}
 .edit-hint{margin-top:6px;font-size:13px;color:var(--blaze);font-weight:600}
+
+/* Hover preview (hover.js): the name of what a click will open. */
+.hover-tip{position:absolute;z-index:900;pointer-events:none;background:rgba(20,28,24,.9);color:#fff;font:600 13px/1.2 var(--body);padding:5px 9px;border-radius:5px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.leaflet-container.hover-rec{cursor:pointer}

@@ -37,7 +37,8 @@ function query(url, latlng, fields, opts){
     const q = L.esri.query({ url });
     if(opts.nearby) q.nearby(latlng, opts.nearby); else q.intersects(latlng);
     if(opts.where) q.where(opts.where);
-    q.returnGeometry(!opts.nearby && opts.geometry !== false);
+    q.returnGeometry(opts.geometry === true || (!opts.nearby && opts.geometry !== false));
+    if(opts.nearby && opts.geometry === true) q.simplify(map, 0.5);
     if(fields) q.fields(fields);
     q.run((err,fc)=> res(err || !fc ? { err: err || true, features:[] } : { features: fc.features||[] }));
   }), { features:[] });
@@ -81,10 +82,24 @@ function recLookup(ll){
   const states = (inMN(ll) ? ['mn'] : []).concat(inWI(ll) ? ['wi'] : []);
   const keys = Object.entries(REC_LAYERS).filter(([k]) => on[k] && map.getZoom() >= (REC_MINZ[k] || 10)).flatMap(([, v]) => v).filter(k => states.includes(REC_STATE(k)));
   if(!keys.length) return null;
-  return Promise.all(keys.map(key => query(SRC[key], ll, REC_FIELDS[key], { where:LF.REC_WHERE[key],
-      nearby:Math.min(400, Math.max(12, mpp * (/Access|Boat/.test(key) ? 22 : 14))) })
-    .then(q => ({ err:q.err, results:q.features.slice(0, 3).map(f => ({ key, p:f.properties })) }))))
-    .then(all => ({ err:all.every(a => a.err), results:[].concat(...all.map(a => a.results)) }));
+  // A finger is wide: lines answer within ~22 px, dots within ~24 px (never less than 15 m).
+  return Promise.all(keys.map(key => query(SRC[key], ll, REC_FIELDS[key], { where:LF.REC_WHERE[key], geometry:true,
+      nearby:Math.min(500, Math.max(15, mpp * (/Access|Boat/.test(key) ? LF.REC_TAP.dot : LF.REC_TAP.line))) })
+    .then(q => ({ err:q.err, results:q.features.slice(0, 3).map(f => ({ key, p:f.properties, f, d:distTo(ll, f) })) }))))
+    .then(all => ({ err:all.every(a => a.err), results:[].concat(...all.map(a => a.results)).sort((a, b) => a.d - b.d) }));
+}
+/* Metres from the tap to a feature (0 inside a lake), for putting the nearest one first. */
+function distTo(ll, f){
+  const g = f && f.geometry; if(!g) return 1e9;
+  const P = map.latLngToLayerPoint(ll), mpp = 156543.03 * Math.cos(ll.lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+  const pt = c => map.latLngToLayerPoint([c[1], c[0]]);
+  let best = 1e9;
+  const seg = line => { for(let i = 1; i < line.length; i++) best = Math.min(best, L.LineUtil.pointToSegmentDistance(P, pt(line[i - 1]), pt(line[i]))); if(line.length === 1) best = Math.min(best, P.distanceTo(pt(line[0]))); };
+  if(g.type === 'Point') best = P.distanceTo(pt(g.coordinates));
+  else if(g.type === 'LineString') seg(g.coordinates);
+  else if(g.type === 'MultiLineString') g.coordinates.forEach(seg);
+  else if(/Polygon/.test(g.type)){ try{ if(L.geoJSON(f).getLayers()[0].getBounds().contains(ll)) best = 0; }catch(e){} (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).forEach(p => p.forEach(seg)); }
+  return best * mpp;
 }
 const yes = v => v === 1 || v === '1' || /^(x|y|yes)$/i.test(String(v || '').trim());
 function recBlock(x){
@@ -342,17 +357,44 @@ function unitBlock(u){
 // The unit's own layer is kept (invisible) for its bounds; LF.select draws the visible outline.
 const unitStyle = () => ({ opacity:0, fillOpacity:0 });
 
+/* The trails, roads, accesses and trout water near a tap, nearest first, one entry per name. */
+function recList(r){
+  if(!r.rec || !r.rec.results.length) return [];
+    // Access sites first (a tap on a dot), then trails and roads; one entry per name.
+    // WI DNR lists a road once per kind of vehicle allowed on it: merge those into one entry naming them all.
+    const motor = new Map(), merged = [];
+    r.rec.results.forEach(x => {
+      if(!/^wiRoads(AtvSnow|Atv|Snow)$/.test(x.key)){ merged.push(x); return; }
+      const id = x.p.ROAD_SEQ_NO || x.p.LOCAL_NAME || Math.random();
+      if(!motor.has(id)){ const m = { key:'wiRoadsAtvSnow', p:Object.assign({}, x.p), f:x.f, d:x.d, allow:new Set() }; motor.set(id, m); merged.push(m); }
+      const a = motor.get(id).allow;
+      if(x.key !== 'wiRoadsSnow'){ a.add('ATVs'); }
+      if(x.key === 'wiRoadsAtvSnow'){ a.add('UTVs'); }
+      if(x.key !== 'wiRoadsAtv'){ a.add('snowmobiles'); }
+    });
+    merged.forEach(m => { if(m.allow){ const l = ['ATVs', 'UTVs', 'snowmobiles'].filter(v => m.allow.has(v)); m.label = 'DNR road open to ' + (l.length > 1 ? l.slice(0, -1).join(', ') + ' & ' + l[l.length - 1] : l[0]); } });
+    const seenRec = new Set(), recs = merged.sort((a, b) => (a.d == null ? 1e9 : a.d) - (b.d == null ? 1e9 : b.d))
+      .filter(x => { const k = x.key + (x.p.trail_name || x.p.road_name || x.p.road_num || x.p.access_name || x.p.unique_swas_id || x.p.TRAIL_NAME || x.p.LOCAL_NAME || x.p.LMS_BOAT_LANDING_NAME || x.p.kittle_name || x.p.pw_basin_name || x.p.STREAM || x.p.WATERBODY_ || (/wiIceAge|wiNct/.test(x.key) ? '' : Math.random()));
+        if(seenRec.has(k)) return false; seenRec.add(k); return true; });
+    return recs;
+}
+const recName = x => x.p.kittle_name || x.p.STREAM || x.p.WATERBODY_ || (x.p.pw_basin_name ? x.p.pw_basin_name + ' Lake' : '') || x.p.trail_name || x.p.TRAIL_NAME ||
+  x.p.access_name || x.p.LMS_BOAT_LANDING_NAME || x.p.road_name || (x.p.LOCAL_NAME ? titleCase(x.p.LOCAL_NAME) + ' road' : '') || (LF.REC[x.key] || {}).label;
+
 function render(ll, r, savedArea){
   const mySeq = clickSeq;
   const parcel = (r.wi && r.wi.features[0] && { st:'WI', f:r.wi.features[0] }) || (r.mn && r.mn.features[0] && { st:'MN', f:r.mn.features[0] });
   const pad = (r.padus && r.padus.features || []).filter(f=>f.properties.Pub_Access!=='UK').concat((r.padus && r.padus.features || []).filter(f=>f.properties.Pub_Access==='UK'));
   const access = pad[0] && ACCESS[pad[0].properties.Pub_Access];
   let html = '', title = 'No record here', tags = '';
+  /* A tap on (or right beside) a creek, trail, road or landing is about that: it gets the title and the only outline;
+     the parcel and public land below are listed without being outlined. */
+  const recs = recList(r), focus = recs[0] || null;
 
   const unit = publicUnit(r, pad);
   let unitLayer = null;
   const showUnit = g => { if(!g || mySeq !== clickSeq) return; unitLayer = L.geoJSON(g, { pane:'hiPane', interactive:false, style:unitStyle() }); hi.addLayer(unitLayer);
-    LF.select.shape(g, { color:css('--open'), weight:3, fill:.14 }); };
+    if(!focus) LF.select.shape(g, { color:css('--open'), weight:3, fill:.14 }); };
   if(unit){
     html += unitBlock(unit);
     if(unit.geo) showUnit(unit.geo);
@@ -365,7 +407,7 @@ function render(ll, r, savedArea){
   }
 
   if(parcel){
-    LF.select.shape(parcel.f, { color:css('--blaze'), weight:unit ? 2.5 : 4, fill:unit ? 0 : .12 });
+    if(!focus) LF.select.shape(parcel.f, { color:css('--blaze'), weight:unit ? 2.5 : 4, fill:unit ? 0 : .12 });
     const p = parcel.f.properties;
     if(parcel.st==='WI'){
       title = has(p.OWNERNME1) ? p.OWNERNME1 : 'Owner not listed';
@@ -427,23 +469,7 @@ function render(ll, r, savedArea){
     const key = label + JSON.stringify(Object.entries(x.attributes || {}).filter(([k]) => !SKIP.test(k.replace(/\s/g,'_'))));
     if(seen.has(key)) return false; seen.add(key); return true; });
   let recHtml = '';   // shown first: a tap on a trail or access dot is about that
-  if(r.rec && r.rec.results.length){
-    // Access sites first (a tap on a dot), then trails and roads; one entry per name.
-    // WI DNR lists a road once per kind of vehicle allowed on it: merge those into one entry naming them all.
-    const motor = new Map(), merged = [];
-    r.rec.results.forEach(x => {
-      if(!/^wiRoads(AtvSnow|Atv|Snow)$/.test(x.key)){ merged.push(x); return; }
-      const id = x.p.ROAD_SEQ_NO || x.p.LOCAL_NAME || Math.random();
-      if(!motor.has(id)){ const m = { key:'wiRoadsAtvSnow', p:Object.assign({}, x.p), allow:new Set() }; motor.set(id, m); merged.push(m); }
-      const a = motor.get(id).allow;
-      if(x.key !== 'wiRoadsSnow'){ a.add('ATVs'); }
-      if(x.key === 'wiRoadsAtvSnow'){ a.add('UTVs'); }
-      if(x.key !== 'wiRoadsAtv'){ a.add('snowmobiles'); }
-    });
-    merged.forEach(m => { if(m.allow){ const l = ['ATVs', 'UTVs', 'snowmobiles'].filter(v => m.allow.has(v)); m.label = 'DNR road open to ' + (l.length > 1 ? l.slice(0, -1).join(', ') + ' & ' + l[l.length - 1] : l[0]); } });
-    const seenRec = new Set(), recs = merged.sort((a, b) => /Access|Boat/.test(b.key) - /Access|Boat/.test(a.key))
-      .filter(x => { const k = x.key + (x.p.trail_name || x.p.road_name || x.p.road_num || x.p.access_name || x.p.unique_swas_id || x.p.TRAIL_NAME || x.p.LOCAL_NAME || x.p.LMS_BOAT_LANDING_NAME || x.p.kittle_name || x.p.pw_basin_name || x.p.STREAM || x.p.WATERBODY_ || (/wiIceAge|wiNct/.test(x.key) ? '' : Math.random()));
-        if(seenRec.has(k)) return false; seenRec.add(k); return true; });
+  if(recs.length){
     const allTrout = recs.every(x => /Trout/.test(x.key));
     recHtml = `<div class="block"><h3>${allTrout ? 'Trout water' : 'Trails, roads &amp; water access'}</h3>` + recs.slice(0, 5).map(recBlock).join('') + '</div>';
   }
@@ -458,6 +484,16 @@ function render(ll, r, savedArea){
   else if(parcel) tags += '<span class="tag priv">Parcel</span>';
   if(access) tags += `<span class="tag ${access[0]}">${esc(access[1])}</span>`;
   if(!parcel && !unit && pad[0]) title = pad[0].properties.Unit_Nm || pad[0].properties.Mang_Name || 'Public land';
+  if(focus){
+    const R = LF.REC[focus.key] || {}, label = focus.label || R.label;
+    title = recName(focus);
+    tags = `<span class="tag rec" style="background:${R.color};color:${/00e5ff/i.test(R.color) ? '#06303a' : '#fff'}">${esc(label)}</span>` + tags;
+    const g = focus.f && focus.f.geometry;
+    if(g && g.type === 'Point') LF.select.point([g.coordinates[1], g.coordinates[0]], { color:R.color });
+    // One bold line over the feature (no extra white casing, so a creek doesn't look marked twice); creeks smoothed like the layer.
+    else if(g){ if(/Trout/.test(focus.key)) LF.smoothGeometry(g);
+      LF.select.shape(focus.f, { color:R.color, weight:/Polygon/.test(g.type) ? 3 : 6, casing:false, fill:/Polygon/.test(g.type) ? .15 : 0 }); }
+  }
   head.innerHTML = `<h2>${esc(title)}</h2><div>${tags}</div><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
   if(savedArea) html = `<p class="note saved-note">From your offline copy of “${esc(savedArea.name)}”, saved ${new Date(savedArea.updated || savedArea.created).toLocaleDateString('en-US')}.` +
     ' <button class="linkbtn" data-act="live">Check live data</button></p>' + html;

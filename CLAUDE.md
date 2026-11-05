@@ -29,6 +29,7 @@ site/                 the whole app: static files, no build step
                       LF.showSheet(head, body, {pin, onAct, onClose, back:{label, go}}): back draws "‹ Back to …" (items opened from the list).
                       Phones: dragging the grab bar / title down tucks the sheet to a title strip (LF.tuckSheet; .sheet.tucked), still open;
                       drag up or tap to restore. Any new panel opens untucked.
+  js/hover.js         desktop hover preview of trails/roads/landings/trout water: glow + name tip = what a click opens
   js/search.js        address/coordinate search (Nominatim) and the GPS button
   js/geo.js           distance, acres, bearing, climb, US-unit formatting, GPX/KML export and import (pure; runs in Node)
   js/gps.js           one shared GPS watch (LF.gps.start/stop by user name: 'button', 'track', 'goto'); emits 'gps'.
@@ -152,16 +153,21 @@ All URLs are in the `SRC` block near the top of the app script. If an agency mov
 | `mnTroutStreams`, `mnTroutLakes` | MN DNR `env_trout_stream_designations` (0), `env_trout_lake_designation` (layer 2, `trout_lake`='Y') | Toggle `trout`. Both `trout_flag` values (1, 2) are designated streams; meaning undocumented, not shown |
 | `wiTroutStreams`, `wiTroutLakes` | WI DNR `FM_Trout/FM_TROUT_REGS_WTM_Ext` layers 0, 1 | Toggle `trout`. `SEASON_TXT`, `EARLY_SEASON_TXT`, `BAG_LMT`, gear ("N/A" hidden) |
 
-Trout water (`trout`, Layers > Fishing, off by default, zoom 8+): electric cyan `#00e5ff` with a dark `#06303a` casing on
-`troutPane` 427 / `troutCasePane` 426 (above public land, below trails); lakes filled cyan (`baseFill`, so Hide shading clears it).
-A tap that finds only trout water titles the section "Trout water".
+Trout water (`trout`, Layers > Fishing, off by default, zoom 8+): electric cyan `#00e5ff` on `troutPane` 427 with a soft cyan glow
+(not a dark edge, which read as a second line) on `troutCasePane` 426; lakes filled cyan (`baseFill`). Streams are fetched finer
+(simplifyFactor .25, precision 6) and corner-rounded by `SmoothLines` (Chaikin ×2 in `createLayers`; `LF.smoothGeometry`).
+
+Taps: rec/trout lookups reach `LF.REC_TAP` (22 px lines, 24 px dots), return geometry, and sort nearest first (`recList`). When one
+is hit it becomes the panel title + tag and the only outline (`LF.select.shape(..., {casing:false})`); parcel / public land are
+listed below without outlines. js/hover.js (mouse/trackpad only): within the same reach the nearest one glows on `hoverPane` 457
+and a tip shows its name (`LF.REC_NAME` fields are loaded with the shapes; each feature layer carries `recKey`).
 
 The four `mn*` switch keys now cover both states (labels say WI & MN; keys kept so saved settings carry over). WI has no
 statewide snowmobile/ATV trail layer (county and club trails); only DNR roads open to those vehicles are shown.
 
 The MN trail/road/access layers (off by default, zoom 10+) are feature layers on `recPane` (430) with white casings copied from the
 same features onto `recCasePane` (429), so each service is queried once. Styles in `LF.REC`. A tap asks only the switched-on ones
-within ~14 px (`recLookup` in identify.js) and puts "Trails, roads & water access" at the top of the panel.
+within `LF.REC_TAP` px (`recLookup` in identify.js) and puts "Trails, roads & water access" at the top of the panel.
 
 Four sources in the original handoff were dead when checked live on 2026-11-04 (WI DNR lands, WI closed areas and WI MFL renamed or moved; MN DNR's `arcgis.dnr.state.mn.us/host` server returns 404). The rows above are their replacements. WI's real MFL polygon services exist but refuse public access (403), so the points stand in.
 

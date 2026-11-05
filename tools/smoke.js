@@ -127,6 +127,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.waitForFunction(() => !/Looking up/.test(document.querySelector('#sheetHead').textContent), null, { timeout: 40000 }).catch(() => {});
   const trout = await page.evaluate(() => { const b = document.querySelector('#sheetBody .block'); return b ? b.textContent : ''; });
   check(/Trout water/.test(trout) && /Ekdall Brook/.test(trout) && /Bag limit/.test(trout), 'tap on a WI trout stream shows its regulations: ' + trout.slice(0, 80));
+  check(/Ekdall Brook/.test(await page.textContent('#sheetHead h2')), 'a tap on the creek makes the creek the title (not the parcel it runs through)');
 
   // 5e. Phones: drag the panel down by its grab bar to tuck it (still open, title showing); a tap brings it back.
   const g = await page.locator('#sheetGrab').boundingBox();

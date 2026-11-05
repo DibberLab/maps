@@ -62,6 +62,11 @@ const REC = LF.REC = {
   wiTroutLakes:  { color:'#00e5ff', label:'Trout lake or pond' }
 };
 LF.REC_WHERE = { wiBoat:"ABANDON_FLAG = 'No'" };
+/* The name field of each, loaded with the shapes so hovering can say what a click will open. */
+const REC_NAME = LF.REC_NAME = { mnStateTrails:'trail_name', mnHunterTrails:'trail_name', mnOhv:'trail_name', mnSnowmobile:'trail_name', mnForestRoads:'road_name',
+  mnAccess:'access_name', wiStateTrails:'TRAIL_NAME', wiRoadsCar:'LOCAL_NAME', wiRoadsAtvSnow:'LOCAL_NAME', wiRoadsAtv:'LOCAL_NAME', wiRoadsSnow:'LOCAL_NAME',
+  wiBoat:'LMS_BOAT_LANDING_NAME', mnTroutStreams:'kittle_name', mnTroutLakes:'pw_basin_name', wiTroutStreams:'STREAM', wiTroutLakes:'WATERBODY_' };
+LF.REC_TAP = { line:22, dot:24 };   // tap and hover reach, in screen pixels
 LF.MN_DNR_LAYER = 3;
 const PARCEL_ZOOM = LF.PARCEL_ZOOM = 15;
 const prefs = LF.prefs;
@@ -241,12 +246,34 @@ map.createPane('recCasePane'); map.getPane('recCasePane').style.zIndex = 429; ma
 map.createPane('recPane'); map.getPane('recPane').style.zIndex = 430; map.getPane('recPane').style.pointerEvents = 'none';
 const recWidth = () => map.getZoom() >= 14 ? 3.2 : 2.2;
 /* One request per layer: the white casing copies each feature the coloured layer loads (into a pane just below it). */
+/* Creeks are digitised as straight segments; round the corners (Chaikin, two passes, ends kept) as they arrive.
+   The casing copies the same smoothed feature, so the two always match. */
+function chaikin(pts, n){
+  for(let k = 0; k < n && pts.length > 2; k++){
+    const o = [pts[0]];
+    for(let i = 0; i < pts.length - 1; i++){ const a = pts[i], b = pts[i + 1];
+      o.push([a[0] * .75 + b[0] * .25, a[1] * .75 + b[1] * .25], [a[0] * .25 + b[0] * .75, a[1] * .25 + b[1] * .75]); }
+    o.push(pts[pts.length - 1]); pts = o;
+  }
+  return pts;
+}
+LF.smoothGeometry = g => { if(!g || g._smooth) return g;
+  if(g.type === 'LineString') g.coordinates = chaikin(g.coordinates, 2);
+  else if(g.type === 'MultiLineString') g.coordinates = g.coordinates.map(l => chaikin(l, 2));
+  g._smooth = true; return g; };
+const SmoothLines = L.esri.FeatureLayer.extend({
+  createLayers(features){
+    features.forEach(f => LF.smoothGeometry(f.geometry));
+    return L.esri.FeatureLayer.prototype.createLayers.call(this, features);
+  }
+});
 function cased(key, fields, style, o){
   o = o || {}; const minZoom = o.minZoom || 10;
-  const fl = L.esri.featureLayer(Object.assign({ url:SRC[key], pane:o.pane || 'recPane', minZoom, interactive:false, simplifyFactor:0.6, precision:5, fields, style },
+  const fl = new (o.smooth ? SmoothLines : L.esri.FeatureLayer)(Object.assign({ url:SRC[key], pane:o.pane || 'recPane', minZoom, interactive:false,
+    simplifyFactor:o.simplify || 0.6, precision:o.precision || 5, fields:REC_NAME[key] ? fields.concat(REC_NAME[key]) : fields, style, recKey:key },
     LF.REC_WHERE[key] ? { where:LF.REC_WHERE[key] } : {}));
   const cas = L.layerGroup(), byId = new Map();
-  const caseStyle = () => ({ color:o.casing || '#fff', weight:(o.width ? o.width() : recWidth()) + 3, opacity:map.getZoom() >= minZoom ? (o.casingOpacity || .75) : 0, lineCap:'round', lineJoin:'round' });
+  const caseStyle = () => ({ color:o.casing || '#fff', weight:(o.width ? o.width() : recWidth()) + (o.casingExtra || 3), opacity:map.getZoom() >= minZoom ? (o.casingOpacity || .75) : 0, lineCap:'round', lineJoin:'round' });
   fl.on('createfeature addfeature', e => { if(byId.has(e.feature.id)) return;
     const c = L.geoJSON(e.feature, { pane:o.casePane || 'recCasePane', interactive:false, style:caseStyle }); byId.set(e.feature.id, c); cas.addLayer(c); });
   fl.on('removefeature', e => { const c = byId.get(e.feature.id); if(c){ cas.removeLayer(c); byId.delete(e.feature.id); } });
@@ -263,13 +290,15 @@ map.createPane('troutCasePane'); map.getPane('troutCasePane').style.zIndex = 426
 map.createPane('troutPane'); map.getPane('troutPane').style.zIndex = 427; map.getPane('troutPane').style.pointerEvents = 'none';
 const troutWidth = () => map.getZoom() >= 14 ? 4.5 : map.getZoom() >= 11 ? 3.5 : 2.5;
 const troutLine = () => ({ color:'#00e5ff', weight:troutWidth(), opacity:1, lineCap:'round', lineJoin:'round' });
-const troutTrim = { minZoom:8, pane:'troutPane', casePane:'troutCasePane', casing:'#06303a', casingOpacity:.9, width:troutWidth };
+// One line, not two: a soft cyan glow under the core instead of a dark edge; smoothed, and fetched in more detail.
+const troutTrim = { minZoom:8, pane:'troutPane', casePane:'troutCasePane', casing:'#00e5ff', casingOpacity:.3, casingExtra:8, width:troutWidth,
+  smooth:true, simplify:0.25, precision:6 };
 const troutLake = () => ({ color:'#00e5ff', weight:2.5, opacity:1, fillColor:'#00e5ff', baseFill:.35, fillOpacity:LF.fillOf(.35) });
 const layers = LF.layers = {
   terrain,
   trout: L.layerGroup([
-    L.esri.featureLayer({ url:SRC.mnTroutLakes, pane:'troutPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5, fields:['objectid'], style:troutLake }),
-    L.esri.featureLayer({ url:SRC.wiTroutLakes, pane:'troutPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5, fields:['OBJECTID'], style:troutLake }),
+    L.esri.featureLayer({ url:SRC.mnTroutLakes, pane:'troutPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5, fields:['objectid', 'pw_basin_name'], style:troutLake, recKey:'mnTroutLakes' }),
+    L.esri.featureLayer({ url:SRC.wiTroutLakes, pane:'troutPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5, fields:['OBJECTID', 'WATERBODY_'], style:troutLake, recKey:'wiTroutLakes' }),
     ...cased('mnTroutStreams', ['objectid'], troutLine, troutTrim), ...cased('wiTroutStreams', ['OBJECTID'], troutLine, troutTrim)]),
   // These four switches cover both states (the keys keep their first names so saved settings carry over).
   mntrails: L.layerGroup([...cased('mnStateTrails', ['objectid'], recLine('mnStateTrails')), ...cased('mnHunterTrails', ['objectid'], recLine('mnHunterTrails')),
@@ -278,9 +307,9 @@ const layers = LF.layers = {
     ...cased('wiRoadsAtvSnow', ['OBJECTID'], recLine('wiRoadsAtvSnow')), ...cased('wiRoadsAtv', ['OBJECTID'], recLine('wiRoadsAtv')), ...cased('wiRoadsSnow', ['OBJECTID'], recLine('wiRoadsSnow'))]),
   mnroads: L.layerGroup([...cased('mnForestRoads', ['objectid', 'road_class'], roadStyle), ...cased('wiRoadsCar', ['OBJECTID', 'ROAD_PUBLIC_USE'], wiRoadStyle)]),
   mnaccess: L.layerGroup([
-    L.esri.featureLayer({ url:SRC.mnAccess, pane:'recPane', minZoom:10, interactive:false, fields:['objectid', 'launch_type'],
+    L.esri.featureLayer({ url:SRC.mnAccess, pane:'recPane', minZoom:10, interactive:false, fields:['objectid', 'launch_type', 'access_name'], recKey:'mnAccess',
       pointToLayer:(f, ll) => accessDot(ll, /trailer/i.test(f.properties.launch_type || ''), REC.mnAccess.color) }),
-    L.esri.featureLayer({ url:SRC.wiBoat, pane:'recPane', minZoom:10, interactive:false, fields:['OBJECTID', 'LANDING_TYPE_CODE'], where:LF.REC_WHERE.wiBoat,
+    L.esri.featureLayer({ url:SRC.wiBoat, pane:'recPane', minZoom:10, interactive:false, fields:['OBJECTID', 'LANDING_TYPE_CODE', 'LMS_BOAT_LANDING_NAME'], where:LF.REC_WHERE.wiBoat, recKey:'wiBoat',
       pointToLayer:(f, ll) => accessDot(ll, /ramp/i.test(f.properties.LANDING_TYPE_CODE || ''), REC.wiBoat.color) })]),
   padus: L.esri.featureLayer({ url:SRC.padus, pane:'publicPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5,
     fields:['OBJECTID','Pub_Access'],

@@ -608,7 +608,7 @@ async function shareFolder(f, arr){
   flash('Sharing…', 8000);
   let res;
   try{ res = await LF.api('POST', 'shares', { folder:f, items }); }catch(e){ flash('Could not share: ' + e.message, 5000); return; }
-  shareSheet(f, res, note, view + (view.includes('#') ? '&' : '#') + 'share=' + encodeURIComponent(res.id));
+  shareSheet(f, res, note, await LF.shortLink(view + (view.includes('#') ? '&' : '#') + 'share=' + encodeURIComponent(res.id)));
 }
 function shareSheet(f, res, note, url){
   LF.showSheet(`<h2>Share “${esc(f)}”</h2><div class="small">${res.count} item${res.count === 1 ? '' : 's'}</div>`,

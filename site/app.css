@@ -377,3 +377,8 @@ button.brand .burger{margin-right:12px}
 .grip{flex:none;width:28px;align-self:stretch;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:18px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
 .row-wrap.dragging{position:relative;z-index:5;background:var(--panel);box-shadow:0 4px 14px rgba(0,0,0,.25);border-radius:6px}
 .row-wrap.dragging .grip{cursor:grabbing;color:var(--blaze)}
+
+/* Share link pop-up (app.js LF.linkPop). */
+.linkpop{position:fixed;z-index:1100;left:50%;top:calc(76px + env(safe-area-inset-top,0px));transform:translateX(-50%);width:min(92vw,420px);
+  background:var(--panel);border-radius:10px;box-shadow:var(--shadow);padding:12px}
+.linkpop input{width:100%;margin:6px 0 8px;font:15px var(--body);padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:inherit}

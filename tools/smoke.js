@@ -45,7 +45,10 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.click('#shareBtn');
   await page.waitForTimeout(300);
   const copied = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
-  check(/#map=.*&pin=.*&base=hyb&layers=/.test(copied), 'Share copies a full link: ' + copied.split('#')[1]);
+  check(/\/api\/s\/[A-Za-z0-9]{6}$/.test(copied), 'Share copies a short link: ' + copied);
+  const full = (await page.request.get(copied, { maxRedirects:0 }).catch(() => null));
+  const loc = full ? full.headers().location || '' : '';
+  check(/#map=.*&pin=.*&base=hyb&layers=/.test(loc), 'the short link leads to the full view: ' + loc.split('#')[1]);
 
   // 4. Backup and restore round trip.
   await page.click('#closeSheet');

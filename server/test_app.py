@@ -1,6 +1,7 @@
 """API tests: python -m pytest-free runner.  Run:  python server/test_app.py"""
 import json
-import os, sys, tempfile, json
+import os
+import re, sys, tempfile, json
 fd, path = tempfile.mkstemp(suffix=".db"); os.close(fd)
 os.environ.update(LF_DB=path, LF_ADMIN_EMAILS="boss@example.com", LF_COOKIE_SECURE="0")
 sys.path.insert(0, os.path.dirname(__file__))
@@ -73,6 +74,15 @@ check(len(user.get("/api/shares").json["shares"]) == 1, "the owner can list thei
 check(J(admin, "delete", f"/api/shares/{sid}", {}).status_code == 404, "someone else can't stop the share")
 check(stranger.get("/api/shares/bad!id").status_code == 404, "malformed share ids are refused")
 check(J(user, "delete", f"/api/shares/{sid}", {}).status_code == 200 and stranger.get(f"/api/shares/{sid}").status_code == 404, "stopping a share removes the link")
+# Short links: anyone can make one; the same link gets the same code; following it redirects to the full view.
+h = "#map=17/45.80050/-92.40050&base=hyb&layers=parcels&share=AbCdEfGh1234"
+ln = J(stranger, "post", "/api/links", {"hash": h})
+check(ln.status_code == 200 and re.match(r"^[A-Za-z0-9]{6}$", ln.json["code"]), "anyone can shorten a link")
+check(J(user, "post", "/api/links", {"hash": h}).json["code"] == ln.json["code"], "the same link always gets the same code")
+f = stranger.get("/api/s/" + ln.json["code"])
+check(f.status_code == 302 and f.headers["Location"].endswith("/" + h), "a short link redirects to the full view")
+check(stranger.get("/api/s/nope99").headers["Location"].endswith("/"), "an unknown code just opens the map")
+check(J(stranger, "post", "/api/links", {"hash": "javascript:alert(1)"}).status_code == 400, "only app links can be shortened")
 temp = J(admin, "post", f"/api/admin/users/{hid}/reset", {}).json["password"]
 check(user.get("/api/me").json["user"] is None, "password reset signs the user out")
 check(J(user, "post", "/api/login", {"email": "hunter@example.com", "password": temp}).status_code == 200, "temporary password works")

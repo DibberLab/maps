@@ -82,6 +82,13 @@ CREATE TABLE IF NOT EXISTS shares (
   updated INTEGER NOT NULL,
   UNIQUE (user_id, folder)
 );
+CREATE TABLE IF NOT EXISTS links (
+  code TEXT PRIMARY KEY,
+  hash TEXT NOT NULL UNIQUE,
+  ip TEXT,
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS links_ip ON links (ip, created);
 CREATE TABLE IF NOT EXISTS login_fails (key TEXT NOT NULL, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS login_fails_key ON login_fails (key, ts);
 """
@@ -436,6 +443,47 @@ def unshare(sid):
     if not cur.rowcount:
         return err("Not found.", 404)
     return jsonify(ok=True)
+
+
+# ---------- Short links ----------
+# The app's links carry everything in the #hash (view, layers, pin, share…), so they get long. A short link stores
+# that hash under a 6-character code: /api/s/<code> redirects to /#<hash>. The same hash always gets the same code.
+# Anyone may make one (spot sharing is open to all), up to LINKS_PER_HOUR per visitor.
+LINK_HASH_RE = re.compile(r"^#[A-Za-z0-9=&%/.,_~+:-]{1,1500}$")
+LINK_CODE_RE = re.compile(r"^[A-Za-z0-9]{4,12}$")
+LINKS_PER_HOUR = 120
+CODE_ABC = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no 0/O, 1/l/I
+
+
+@app.post("/api/links")
+def make_link():
+    h = body().get("hash")
+    if not isinstance(h, str) or not LINK_HASH_RE.match(h):
+        return err("That link can't be shortened.")
+    conn = db()
+    row = conn.execute("SELECT code FROM links WHERE hash = ?", (h,)).fetchone()
+    if row:
+        return jsonify(code=row["code"], path="/api/s/" + row["code"])
+    ip = request.remote_addr or ""
+    if conn.execute("SELECT COUNT(*) FROM links WHERE ip = ? AND created > ?", (ip, now() - 3600)).fetchone()[0] >= LINKS_PER_HOUR:
+        return err("Too many links for now; try again later.", 429)
+    for _ in range(8):
+        code = "".join(secrets.choice(CODE_ABC) for _ in range(6))
+        try:
+            conn.execute("INSERT INTO links VALUES (?, ?, ?, ?)", (code, h, ip, now()))
+            conn.commit()
+            return jsonify(code=code, path="/api/s/" + code)
+        except sqlite3.IntegrityError:
+            conn.rollback()
+    return err("Could not make a short link; try again.", 500)
+
+
+@app.get("/api/s/<code>")
+def follow_link(code):
+    row = db().execute("SELECT hash FROM links WHERE code = ?", (code,)).fetchone() if LINK_CODE_RE.match(code) else None
+    resp = app.response_class(status=302)
+    resp.headers["Location"] = "/" + (row["hash"] if row else "")   # an unknown code just opens the map
+    return resp
 
 
 # ---------- Admin ----------

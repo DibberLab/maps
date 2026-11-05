@@ -396,11 +396,13 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForSelector('#shareBtn:not([hidden])');
   await page.click('#shareBtn');
   await page.waitForSelector('#sh-url');
-  const link = await page.inputValue('#sh-url');
+  const short = await page.inputValue('#sh-url');
+  const link = new URL((await page.request.get(short, { maxRedirects:0 })).headers().location, short).href;
+  check(/\/api\/s\/[A-Za-z0-9]{6}$/.test(short), 'the folder link is a short link: ' + short.replace(/^https?:\/\/[^/]+/, ''));
   check(/#map=17\/45\.80050\/-92\.40050.*&share=[A-Za-z0-9_-]{8,}/.test(link), 'Share on a folder\'s panel shares that folder at this view: ' + link.replace(/^.*#/, '#'));
   const guestCtx = await browser.newContext({ viewport:{ width:420, height:800 } });
   const guest = await guestCtx.newPage();
-  await guest.goto(link); await guest.waitForSelector('#sheet:not([hidden]) h2:has-text("Fish Lake Disc Golf Course")', { timeout:15000 });
+  await guest.goto(short, { waitUntil:'domcontentloaded' }); await guest.waitForSelector('#sheet:not([hidden]) h2:has-text("Fish Lake Disc Golf Course")', { timeout:15000 });   // the short link, as a brother would get it
   const gView = await guest.evaluate(() => { const c = LF.map.getCenter(); return [c.lat, c.lng, LF.map.getZoom()]; });
   check(Math.abs(gView[0] - 45.8005) < 1e-4 && Math.abs(gView[1] + 92.4005) < 1e-4 && gView[2] === 17, 'the link opens at the sharer\'s view: ' + gView.map(v => +v.toFixed(5)).join(', '));
   const gHead = await guest.textContent('#sheetHead');
@@ -415,14 +417,14 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
     document.querySelector('#sheetBody [data-act=sh-open]').click(); await new Promise(r => setTimeout(r, 300));
     return LF.shareLink(LF.shareCtx.params()); }, link);
   check(/&share=[^&]+&item=[^&]+/.test(itemLink), 'an open shared item gives a link to that item: ' + itemLink.replace(/^.*#/, '#'));
-  await page.goto('about:blank'); await page.goto(itemLink); await page.waitForSelector('#sheet:not([hidden]) #sheetBack', { timeout:15000 });
+  await page.goto('about:blank'); await page.goto(itemLink, { waitUntil:'domcontentloaded' }); await page.waitForSelector('#sheet:not([hidden]) #sheetBack', { timeout:15000 });
   check(/Hole/.test(await page.textContent('#sheetHead h2')), 'the item link opens on that item: ' + await page.textContent('#sheetHead h2'));
-  await page.goto('about:blank'); await page.goto(link); await page.waitForSelector('#sheet:not([hidden]) [data-act=sh-save]', { timeout:15000 });
+  await page.goto('about:blank'); await page.goto(link, { waitUntil:'domcontentloaded' }); await page.waitForSelector('#sheet:not([hidden]) [data-act=sh-save]', { timeout:15000 });
   await page.click('[data-act=sh-save]');
   await page.waitForTimeout(800);
   const copies = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.sharedFrom).length));
   check(copies === 2, 'Save to my map keeps a copy of the shared holes: ' + copies);
-  await page.goto('about:blank'); await page.goto(link); await page.waitForSelector('#sheet:not([hidden]) [data-act=sh-save]', { timeout:15000 });
+  await page.goto('about:blank'); await page.goto(link, { waitUntil:'domcontentloaded' }); await page.waitForSelector('#sheet:not([hidden]) [data-act=sh-save]', { timeout:15000 });
   await page.click('[data-act=sh-save]'); await page.waitForTimeout(800);
   check(await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.sharedFrom).length)) === 2, 'saving the same share again updates the copies, not doubles them');
 

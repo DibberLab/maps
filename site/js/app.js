@@ -40,17 +40,39 @@ window.addEventListener('hashchange', () => {
    a folder (published or refreshed first), a shared folder or one of its items — and whether the panel was tucked. */
 LF.shareLink = extra => location.origin + location.pathname + share.build(Object.assign({ view:viewNow(), base:LF.getBase(), layers:LF.onLayers(),
   tucked:document.getElementById('sheet').classList.contains('tucked') }, extra || {}));
+/* Short links: the server keeps the long #hash under a 6-letter code (maps.dibberlab.me/api/s/aB3dE9 → the full view).
+   Falls back to the long link if the server is slow or unreachable. */
+LF.shortLink = async long => {
+  const i = long.indexOf('#'); if(i < 0) return long;
+  try{
+    const r = await Promise.race([LF.api('POST', 'links', { hash:long.slice(i) }), new Promise((_, no) => setTimeout(() => no(new Error('slow')), 3000))]);
+    return location.origin + r.path;
+  }catch(e){ return long; }
+};
+/* A small pop-up with the link, Copy and Send: used when the phone won't open its share menu after the short wait. */
+LF.linkPop = (url, title) => {
+  let pop = document.getElementById('linkPop');
+  if(!pop){ pop = document.createElement('div'); pop.id = 'linkPop'; pop.className = 'linkpop'; document.body.appendChild(pop); }
+  pop.innerHTML = `<div class="small">Link to share</div><input readonly value="${url.replace(/"/g, '&quot;')}">` +
+    `<div class="btnrow">${navigator.share ? '<button class="btn primary" data-p="send">Send…</button>' : ''}<button class="btn${navigator.share ? '' : ' primary'}" data-p="copy">Copy</button><button class="btn" data-p="close">Done</button></div>`;
+  pop.hidden = false;
+  pop.onclick = async e => { const a = (e.target.closest('[data-p]') || {}).dataset; if(!a || !a.p) return;
+    if(a.p === 'close') pop.hidden = true;
+    if(a.p === 'copy'){ try{ await navigator.clipboard.writeText(url); flash('Link copied'); pop.hidden = true; }catch(err){ pop.querySelector('input').select(); } }
+    if(a.p === 'send'){ try{ await navigator.share({ title, url }); pop.hidden = true; }catch(err){} } };
+  pop.querySelector('input').select();
+};
 document.getElementById('shareBtn').addEventListener('click', async () => {
   const ctx = LF.shareCtx;
   if(ctx && ctx.run){ ctx.run(); return; }   // e.g. a folder: it publishes, then shows its own Send / Copy
-  const url = LF.shareLink(ctx && ctx.params ? ctx.params() : { pin:pinNow() });
+  const url = await LF.shortLink(LF.shareLink(ctx && ctx.params ? ctx.params() : { pin:pinNow() }));
   const title = (document.querySelector('#sheetHead h2') || {}).textContent || 'Line Fence';
   if(navigator.share){
     try{ await navigator.share({ title:'Line Fence: ' + title, url }); return; }
     catch(e){ if(e && e.name === 'AbortError') return; }
   }
   try{ await navigator.clipboard.writeText(url); flash('Link copied'); }
-  catch(e){ window.prompt('Copy this link:', url); }
+  catch(e){ LF.linkPop(url, 'Line Fence: ' + title); }
 });
 
 /* ---------- Install as an app ---------- */

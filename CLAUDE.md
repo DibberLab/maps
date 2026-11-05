@@ -28,6 +28,9 @@ site/                 the whole app: static files, no build step
                       same id, copy replaced), GET /api/shares/<id> (public, owner's display name only), DELETE to stop. Opened
                       links draw into a preview layer via drawRecords (holes too); Save to my map copies them with ids
                       sh-<share>-<id> and sharedFrom, so saving again updates. Photos dropped if the folder is over ~20 MB.
+                      Short links (LF.shortLink): POST /api/links {hash} (anyone, 120/h per IP; same hash = same code) →
+                      /api/s/<6 chars> redirects to /#hash. Under /api/ because nginx only proxies that path. Falls back to the long
+                      link after 3 s. LF.linkPop shows the link with Copy / Send when the phone won't open its share menu.
   js/map.js           SRC block (every data service URL), base maps, layers, layers panel, LF.flash
   js/select.js        LF.select (the selected thing drawn bold on 'selPane': cased outline, pulsing ring; cleared when
                       the sheet changes) and LF.shading / LF.shadeSwitch() (Hide shading: public land and any path with a
@@ -109,7 +112,7 @@ site/                 the whole app: static files, no build step
   manifest.json, icons/   install-as-app (icons rendered from icons/icon.svg)
   vendor/             Leaflet 1.9.4 and Esri Leaflet 3.0.12, byte-identical to the official releases
 server/app.py         the API: accounts (pending/approved/disabled, user/admin), sessions (HttpOnly cookie, hashed tokens,
-                      90 days), sync, shared folders (table shares, UNIQUE user+folder), admin endpoints. JSON-only writes + Origin check against CSRF; login rate limit.
+                      90 days), sync, shared folders (table shares, UNIQUE user+folder), short links (table links), admin endpoints. JSON-only writes + Origin check against CSRF; login rate limit.
 server/test_app.py    API tests (Flask test client)
 tools/run_all.sh      every test suite against a local site + API on fresh databases: bash tools/run_all.sh <venv>
 tools/smoke.js        end-to-end test in headless Chromium against the live services

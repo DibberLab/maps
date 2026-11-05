@@ -463,7 +463,7 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Disc golf / Test Park")');
   check(await page.isHidden('.coursebar') && await page.evaluate(() => !LF.mode), 'Done closes the bar and opens the course folder');
 
-  const rtrip = await page.evaluate(() => LF.db.all('tracks').then(ts => { const h = ts.filter(t => t.dg); const g = LF.geo;
+  const rtrip = await page.evaluate(() => LF.db.all('tracks').then(ts => { const h = ts.filter(t => t.dg && t.folder === 'Disc golf / Test Park'); const g = LF.geo;
     const a = g.parseFile(g.toGPX({ tracks:h })).tracks, b = g.parseFile(g.toKML({ tracks:h })).tracks;
     return { n:h.length, gpx:a.map(t => t.dg && t.dg.hole + '/' + t.dg.par).sort().join(','), kml:b.map(t => t.dg && t.dg.hole + '/' + t.dg.par).sort().join(','), folder:a[0] && a[0].folder }; }));
   check(rtrip.n === 2 && rtrip.gpx === '1/3,2/4' && rtrip.kml === '1/3,2/4' && rtrip.folder === 'Disc golf / Test Park', 'a course exported to GPX or KML imports back as disc golf holes: ' + JSON.stringify(rtrip));

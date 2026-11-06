@@ -87,6 +87,7 @@ async function now(loud){
       await adopt();
       await push();
       const n = await pull();
+      if(n && LF.items && LF.items.tidyDiscGolf) await LF.items.tidyDiscGolf();   // course folders from other devices go under Disc Golf
       lastOk = Date.now(); prefs.set('syncLast', lastOk); lastErr = '';
       if(loud) flash(n ? `Synced: ${n} update${n === 1 ? '' : 's'} from your other devices` : 'Everything is synced', 2500);
       return true;

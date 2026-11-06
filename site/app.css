@@ -352,7 +352,7 @@ button.brand .burger{margin-right:12px}
 .recsw{display:inline-block;width:18px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
 
 /* Editing on the map (items.js geoEditor): big touch targets, visible on any base map. */
-.edit-h{cursor:grab}
+.ce-tee{cursor:grab}
 .edit-h i{position:absolute;inset:7px;border-radius:50%;background:#fff;border:3px solid var(--blaze);box-shadow:0 1px 5px rgba(0,0,0,.5);
   display:flex;align-items:center;justify-content:center;font:700 13px/1 var(--body);color:var(--blaze);font-style:normal}
 .edit-h.move i,.edit-h.edge i{inset:2px;background:var(--blaze);color:#fff;border-color:#fff;font-size:17px}
@@ -403,6 +403,10 @@ button.brand .burger{margin-right:12px}
   box-shadow:0 0 0 2px #e8590c}
 .coursebar .btn.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .dgaddbar .cb-btns .btn{flex:1 0 auto}
+.ce-pin .dg-pin{width:34px;height:34px;border-width:3px;box-shadow:0 0 0 3px #e8590c,0 2px 8px rgba(0,0,0,.5);cursor:grab}
+.ce-tee{cursor:grab;box-shadow:0 0 0 2px #e8590c}
+.ce-basket{border-radius:50%;background:#ffe14d;border:2px solid #1f2b24;box-shadow:0 0 0 2px #e8590c;cursor:grab}
+.ce-bend{border-radius:50%;background:#fff;border:2px solid #e8590c;cursor:grab}
 .readbox{background:var(--panel-2);border-radius:8px;padding:10px;margin:6px 0 10px}
 .readbox .small.bad{color:#b91c1c}
 form.edit label.check{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:14px;margin-top:10px}

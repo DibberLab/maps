@@ -506,8 +506,9 @@ function shrink(file){
 }
 
 /* ---------- Creating ---------- */
+db.ready().then(ok => ok && tidyDiscGolf()).catch(() => {});   // on open
 LF.items = {
-  cleanFolder:f => cleanFolder(f),
+  cleanFolder:f => cleanFolder(f), dgFolder:n => dgFolder(n), dgParent:() => dgParent, tidyDiscGolf,
   open, ICONS,
   newWaypoint(ll, o){ o = o || {}; edit('waypoints', Object.assign({ lat:+(+ll[0]).toFixed(7), lng:+(+ll[1]).toFixed(7), icon:'pin', name:o.name || '' },
     o.gpsAcc ? { gpsAcc:o.gpsAcc, gpsN:o.gpsN } : {}), true); },
@@ -704,6 +705,31 @@ const TYPES = { waypoints:'Waypoints', tracks:'Tracks', line:'Lines', area:'Area
 const typeOf = i => i.store === 'drawings' ? (i.r.kind === 'circle' ? 'area' : i.r.kind) : i.store;
 const keyOf = (store, r) => store + ':' + r.id;
 const cleanFolder = f => geo.folderName(geo.folderPath(f));
+
+/* Disc golf lives in one folder with a subfolder per course: "Disc Golf / Fish Lake", "Disc Golf / Rounds".
+   tidyDiscGolf() (on open, and after sync brings changes) folds other spellings ("Disc golf") into it and moves a course
+   folder made at the top level (a folder holding disc golf holes) underneath it, with everything else in that folder. */
+const dgParent = 'Disc Golf';
+const isDgParent = part => /^disc\s*golf$/i.test(part || '');
+const dgFolder = name => dgParent + ' / ' + (cleanFolder(String(name || '').replace(/\//g, '-')) || 'Course');
+async function tidyDiscGolf(){
+  if(!(await db.ready())) return 0;
+  const stores = ['waypoints', 'drawings', 'tracks'];
+  const all = [].concat(...await Promise.all(stores.map(s => db.all(s).then(a => a.map(r => ({ store:s, r }))))));
+  // A course folder: it holds disc golf holes, or tee pad / basket waypoints, or says "disc golf" in its name.
+  const dgThing = i => (i.store === 'tracks' && i.r.dg) || (i.store === 'waypoints' && /^dg(tee|basket)$/.test(i.r.icon || ''));
+  const courseTops = new Set(all.map(i => geo.folderPath(i.r.folder)).filter(p => p.length && !isDgParent(p[0]) && /disc\s*golf/i.test(p[0])).map(p => p[0])
+    .concat(all.filter(dgThing).map(i => geo.folderPath(i.r.folder)).filter(p => p.length === 1 && !isDgParent(p[0])).map(p => p[0])));
+  let moved = 0;
+  for(const i of all){
+    const parts = geo.folderPath(i.r.folder); if(!parts.length) continue;
+    let to = null;
+    if(isDgParent(parts[0]) && parts[0] !== dgParent) to = [dgParent].concat(parts.slice(1));
+    else if(courseTops.has(parts[0])) to = [dgParent].concat(parts);
+    if(to){ await db.put(i.store, Object.assign({}, i.r, { folder:geo.folderName(to) })); moved++; }
+  }
+  return moved;
+}
 
 async function allItems(){
   const [wps, drs, trs] = await Promise.all([db.all('waypoints'), db.all('drawings'), db.all('tracks')]);

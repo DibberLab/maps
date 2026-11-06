@@ -59,6 +59,9 @@ site/                 the whole app: static files, no build step
                       (solid|dash|dot), weight, iconName (the other app's icon name, mapped by iconFor/ICON_ALIASES), extra {}.
                       geo.js reads them from KML ExtendedData / GPX extensions / key=value descriptions and writes them back.
                       Disc golf holes travel as dgHole / dgPar / dgFairway / dgAnchors (a KML line with them imports as a track).
+                      Disc golf folders: everything lives under "Disc Golf" (LF.items.dgFolder(name)). tidyDiscGolf() runs on open
+                      and after a sync pull: other spellings fold into "Disc Golf", and a top-level folder that holds dg holes or
+                      dgtee/dgbasket waypoints, or has "disc golf" in its name, moves underneath it.
                       Edit mode (geoEditor): the item is hidden from the normal layer and drawn on 'editPane' (470, pointer-events none
                       so its canvas can't swallow taps): draggable waypoint; a vertex handle per corner + ✥ move-all for lines/areas;
                       centre + edge (radius) for circles. Applied on Save only; plain tracks aren't movable. redraw() is generation-guarded.
@@ -70,7 +73,7 @@ site/                 the whole app: static files, no build step
                       anchors the middle point is the built-in one. Folder ⋯ "Make its tracks disc golf holes" and Select-mode
                       "Make disc golf holes" set r.dg (hole # from the name: holeFromName). Track points are [lat,lng,alt,t]:
                       pass [p[0],p[1]] to Leaflet (it rejects 4-element arrays).
-  js/dgcourse.js      disc golf part 1, Map a course (+ > Disc golf): course name → folder ("Disc golf / <name>", or an existing course
+  js/dgcourse.js      disc golf part 1, Map a course (+ > Disc golf): course name → folder ("Disc Golf / <name>", or an existing course
                       folder, continuing from its next hole). A bottom bar per hole: Tee pad here (raw GPS averaged ≤12 s,
                       LF.gpsAverageOf from draw.js) → fairway recorded from 'gps' fixes → Basket here saves a dg track (Hole N,
                       par, color #0f766e; tidy()'d; 11-point straight line if nothing was walked). LF.mode='course': a map tap
@@ -86,7 +89,7 @@ site/                 the whole app: static files, no build step
                       with ?since=version; merge() = server copy + pending ops; own current hole per phone.
                       Each round records a GPS track from Start / joining (track.js start({round}); skipped if a track is already
                       recording; a round track reloaded within 30 min resumes unpaused). Finishing offers Save track with the round
-                      (folder "Disc golf / Rounds", r.trackId) or Discard (LF.track.endFor). The pill #roundChip under the search bar
+                      (folder "Disc Golf / Rounds", r.trackId) or Discard (LF.track.endFor). The pill #roundChip under the search bar
                       shows the round in progress (updated in the last 12 h) or a finished one whose track awaits that choice.
   js/dgthrow.js       disc golf part 3, Measure a throw (+ > Disc golf; My throws lists them): LF.db store 'throws' (DB v4; synced
                       + backed up) { from, to, dist (m), acc (m), disc, kind, at, name, hole?, course? }. Each end: raw GPS averaged
@@ -106,8 +109,12 @@ site/                 the whole app: static files, no build step
                       leaves the phone. "Publish a course from my map" sends a folder of dg holes (updates the course with the
                       same name, or the one it was copied from: track.fromCourse). discgolf.js merges published courses into the
                       layer (replacing an OSM entry with the same name within 5 km, keeping its details); their sheet has Add to
-                      my map (tracks pc-<course>-<hole> in "Disc golf / <name>") and, for admins, Remove course. Score a round
+                      my map (tracks pc-<course>-<hole> in "Disc Golf / <name>") and, for admins, Remove course. Score a round
                       lists them (holes carry their own line); Measure a throw checks their tee pads.
+                      Edit course (admins, on any course sheet; LF.dgadmin.editCourse): drag the course pin, and for a published
+                      layout each hole's tee, bends (anchors) and basket; holes are rebuilt with line() on Save. course.pin places
+                      the pin by hand. An OSM course saves as a pin-only course (holes [] + pin) that the layer lays over it,
+                      keeping the OSM holes (asCourse → pinOnly).
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

@@ -579,11 +579,15 @@ def _num(v, lo, hi):
 
 
 def _clean_course(c):
-    """The course as stored, or None when it isn't one: {name, c:[lat,lng], holes:[{n, par, ft, line, anchors}], address, notes}."""
+    """The course as stored, or None when it isn't one: {name, c:[lat,lng], holes:[{n, par, ft, line, anchors}], address, notes}.
+    pin [lat,lng] places the course pin by hand (otherwise it's the middle of the holes). A course with a pin and no holes
+    only moves an OpenStreetMap course's pin; the layer keeps that course's own holes."""
     if not isinstance(c, dict) or not isinstance(c.get("name"), str) or not c["name"].strip():
         return None
+    pin = c.get("pin")
+    pin = [round(pin[0], 7), round(pin[1], 7)] if isinstance(pin, list) and len(pin) == 2 and _num(pin[0], -90, 90) and _num(pin[1], -180, 180) else None
     holes = c.get("holes")
-    if not isinstance(holes, list) or not (0 < len(holes) <= 54):
+    if not isinstance(holes, list) or len(holes) > 54 or (not holes and not pin):
         return None
     out = []
     for h in holes:
@@ -597,9 +601,9 @@ def _clean_course(c):
         out.append({"n": str(h.get("n") or len(out) + 1)[:6], "par": int(par), "ft": ft and int(ft),
                     "line": [[round(p[0], 7), round(p[1], 7)] for p in line], "anchors": anchors})
     pts = [p for h in out for p in h["line"]]
-    center = [round(sum(p[0] for p in pts) / len(pts), 6), round(sum(p[1] for p in pts) / len(pts), 6)]
+    center = pin or [round(sum(p[0] for p in pts) / len(pts), 6), round(sum(p[1] for p in pts) / len(pts), 6)]
     text = lambda k, n: (c.get(k) or "").strip()[:n] if isinstance(c.get(k), str) else ""
-    return {"name": c["name"].strip()[:80], "c": center, "holes": out, "address": text("address", 120), "notes": text("notes", 1000)}
+    return {"name": c["name"].strip()[:80], "c": center, "pin": pin, "holes": out, "address": text("address", 120), "notes": text("notes", 1000)}
 
 
 @app.get("/api/courses")

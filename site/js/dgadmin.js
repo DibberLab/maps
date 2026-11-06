@@ -28,7 +28,7 @@ async function list(){
   LF.showSheet('<h2>Disc golf courses</h2><div class="small">Published courses show for everyone on the disc golf layer</div>',
     '<div class="btnrow acts"><button class="btn primary" data-act="add">Add course</button></div>' +
     (pub.length ? '<div class="block"><h3>Published</h3><div class="rows">' + pub.map(c => `<button class="row" data-act="open" data-id="${esc(c.id)}"><span><b>${esc(c.name)}</b>` +
-      `<span class="small">${c.holes.length} holes · par ${c.holes.reduce((a, h) => a + h.par, 0)} · updated ${new Date(c.updated * 1000).toLocaleDateString('en-US', { month:'short', day:'numeric' })}</span></span></button>`).join('') + '</div></div>'
+      `<span class="small">${c.holes.length ? `${c.holes.length} holes · par ${c.holes.reduce((a, h) => a + h.par, 0)}` : 'Pin moved'} · updated ${new Date(c.updated * 1000).toLocaleDateString('en-US', { month:'short', day:'numeric' })}</span></span></button>`).join('') + '</div></div>'
       : '<p class="note">No courses published yet.</p>') +
     (mine.size ? `<div class="block"><h3>Publish a course from my map</h3><p class="small">A folder of disc golf holes. Publishing one with the same name as a published course updates it.</p>
       <div class="row2"><select id="pub-folder">${Array.from(mine.keys()).sort().map(f => `<option value="${esc(f)}">${esc(geo.folderPath(f).pop())} · ${mine.get(f).length} holes</option>`).join('')}</select>
@@ -329,5 +329,69 @@ function line(ll){
   return { line:out, anchors };
 }
 
-LF.dgadmin = { list, add:addStart, state:() => A && { step:A.step, cur:A.cur, holes:A.holes.map(p => p.length), mpp:A.mpp, rot:A.rot, C:A.C.slice(), ft:A.holes.map(p => Math.round(ftOf(p))) } };
+/* ---------- Edit a course on the map (admins): drag its pin, and for a published layout each hole's tee pad, bends
+   and basket. The holes are rebuilt from those points (line()), so the bends stay bends. An OpenStreetMap course
+   gets only its pin: saved as a pin-only course that the layer lays over the OSM one. ---------- */
+let E = null;
+const edits = L.layerGroup();
+function editCourse(c){
+  if(A || E) return;
+  const layout = c.pub && !c.pinOnly;
+  E = { c, pin:c.c.slice(), holes:layout ? c.holes.map(h => ({ ref:h.ref, par:h.par, ft:h.ft,
+    keys:[h.line[0]].concat((h.anchors || []).map(i => h.line[i]), [h.line[h.line.length - 1]]).map(p => [p[0], p[1]]) })) : [], changed:false };
+  LF.closeSheet(); LF.mode = 'dgedit'; LF.discgolf.dim(true);
+  const b = L.latLngBounds([E.pin]); E.holes.forEach(h => h.keys.forEach(k => b.extend(k)));   // the whole course in view
+  if(E.holes.length) map.fitBounds(b, { padding:[40, 40], maxZoom:18, animate:false }); else map.setView(E.pin, Math.max(map.getZoom(), 17), { animate:false });
+  edits.addTo(map); drawEdits(); showEdit();
+}
+const handle = (ll, html, cls, size, onMove) => L.marker(ll, { pane:'popupPane', draggable:true, keyboard:false, autoPan:true,
+  icon:L.divIcon({ className:cls, iconSize:size, iconAnchor:[size[0] / 2, size[1] / 2], html }) })
+  .on('drag', e => { const p = e.target.getLatLng(); onMove([+p.lat.toFixed(7), +p.lng.toFixed(7)]); E.changed = true; lines(); })
+  .on('dragend', showEdit);
+let lineLayers = [];
+function lines(){
+  lineLayers.forEach(l => l.setLatLngs(E.holes[l.i].keys));
+}
+function drawEdits(){
+  edits.clearLayers(); lineLayers = [];
+  E.holes.forEach((h, i) => {
+    const l = L.polyline(h.keys, { pane:'hiPane', color:'#e8590c', weight:4, interactive:false }).addTo(edits); l.i = i; lineLayers.push(l);
+    h.keys.forEach((k, j) => {
+      const tee = j === 0, basket = j === h.keys.length - 1;
+      handle(k, tee ? esc(h.ref) : '', tee ? 'dg-tee ce-tee' : basket ? 'ce-basket' : 'ce-bend', tee ? [26, 18] : basket ? [20, 20] : [14, 14],
+        ll => { h.keys[j] = ll; }).addTo(edits);
+    });
+  });
+  handle(E.pin, '<div class="dg-pin">' + PIN_SVG + '</div>', 'ce-pin', [34, 34], ll => { E.pin = ll; E.pinMoved = true; }).addTo(edits);
+}
+const PIN_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M6 6h12M7 6l1.5 6h7L17 6M8 12l1 3h6l1-3M8 21h8"/></svg>';
+function showEdit(){
+  if(!E) return;
+  bar.hidden = false;
+  bar.innerHTML = `<div class="cb-head"><span><b>Edit ${esc(E.c.name)}</b></span><span class="small">${E.holes.length ? 'Drag the course pin, tee pads (numbered), bends (white) and baskets (yellow)' : 'Drag the course pin to where it belongs (the parking lot or first tee)'}</span></div>
+    <div class="cb-btns"><button class="btn primary" data-e="save"${E.changed ? '' : ' disabled'}>Save</button><button class="btn" data-e="cancel">Cancel</button></div>`;
+}
+async function saveEdit(btn){
+  btn.disabled = true;
+  const p = (await LF.discgolf.pub()).find(x => x.id === E.c.pub);
+  let course, id = E.c.pub || null;
+  if(E.holes.length && p){
+    course = { name:p.name, address:p.address, notes:p.notes, pin:E.pinMoved ? E.pin : p.pin || null,
+      holes:E.holes.map(h => Object.assign({ n:String(h.ref), par:+h.par || 3 }, h.ft ? { ft:h.ft } : {}, line(h.keys))) };
+  } else course = { name:E.c.name, holes:[], pin:E.pin };
+  try{
+    const res = await LF.api('POST', 'courses', id ? { id, course } : { course });
+    const name = E.c.name; stopEdit();
+    await LF.discgolf.refresh(); flash('Saved ' + name, 3000);
+    LF.discgolf.openPublic(res.id);
+  }catch(e){ flash('Could not save: ' + e.message, 5000); btn.disabled = false; }
+}
+function stopEdit(){ if(!E) return; edits.clearLayers(); map.removeLayer(edits); LF.discgolf.dim(false); E = null; LF.mode = null; bar.hidden = true; }
+bar.addEventListener('click', e => {
+  const b = e.target.closest('[data-e]'); if(!b || !E) return;
+  if(b.dataset.e === 'cancel' && (!E.changed || confirm('Throw away these changes?'))) stopEdit();
+  if(b.dataset.e === 'save') saveEdit(b);
+});
+
+LF.dgadmin = { list, add:addStart, editCourse, editing:() => E && { holes:E.holes.map(h => h.keys.length), pin:E.pin.slice(), changed:E.changed }, state:() => A && { step:A.step, cur:A.cur, holes:A.holes.map(p => p.length), mpp:A.mpp, rot:A.rot, C:A.C.slice(), ft:A.holes.map(p => Math.round(ftOf(p))) } };
 })(window.LF);

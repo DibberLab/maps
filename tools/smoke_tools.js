@@ -323,6 +323,11 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForTimeout(600);
   const marked = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.folder === 'Fish Lake Disc Golf Course').map(x => x.dg && x.dg.hole)));
   check(marked.length === 2 && marked.includes('7') && marked.includes('8'), 'folder action marks its tracks as disc golf holes, hole # from the name: ' + marked.join(','));
+  // A course folder at the top level moves under Disc Golf (and other spellings of Disc Golf fold into it).
+  await page.evaluate(() => LF.db.put('waypoints', { id:'dg-park', name:'Parking', lat:45.8, lng:-92.4, icon:'parking', folder:'disc golf / Rounds' }));
+  await page.evaluate(() => LF.items.tidyDiscGolf());
+  const tidy = await page.evaluate(() => Promise.all([LF.db.all('tracks'), LF.db.get('waypoints', 'dg-park')]).then(([t, w]) => ({ holes:t.filter(x => x.id === 'dg-hole' || x.id === 'dg-other').map(x => x.folder), park:w.folder })));
+  check(tidy.holes.every(f => f === 'Disc Golf / Fish Lake Disc Golf Course') && tidy.park === 'Disc Golf / Rounds', 'course folders go under one Disc Golf folder: ' + JSON.stringify(tidy));
   await page.evaluate(() => { LF.closeSheet(); LF.map.setView([45.8005, -92.4005], 18, { animate:false }); });
   await page.waitForTimeout(500);
   check(await page.locator('.dg-end').count() >= 2 && await page.locator('.dg-arrow').count() >= 1, 'a hole draws a tee, a basket and direction arrows');
@@ -392,7 +397,7 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.evaluate(async () => { if(!document.getElementById('sheet').hidden) LF.closeSheet(); });
   // Shared from the folder's panel with the top Share button, at this exact view.
   await page.evaluate(() => LF.map.setView([45.8005, -92.4005], 17, { animate:false }));
-  await page.evaluate(() => LF.items.list({ folder:'Fish Lake Disc Golf Course' }));
+  await page.evaluate(() => LF.items.list({ folder:'Disc Golf / Fish Lake Disc Golf Course' }));
   await page.waitForSelector('#shareBtn:not([hidden])');
   await page.click('#shareBtn');
   await page.waitForSelector('#sh-url');
@@ -435,7 +440,7 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await ctx.setGeolocation({ latitude:45.86, longitude:-92.62, accuracy:6 });
   await tool('dgcourse');
   await page.fill('#c-name', 'Test Park');
-  check(await page.inputValue('#c-folder') === 'Disc golf / Test Park', 'the course gets a folder named after it');
+  check(await page.inputValue('#c-folder') === 'Disc Golf / Test Park', 'the course gets a folder named after it');
   await page.click('[data-act=go]');
   await page.waitForSelector('.coursebar:not([hidden]) [data-c=tee]');
   check(/Test Park · Hole 1 · Par 3/.test(await page.textContent('.coursebar')), 'the course bar shows the course, hole and par');
@@ -454,25 +459,25 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.click('.coursebar [data-c="par+"]');
   await page.mouse.click(vw2.width * 0.3, vw2.height * 0.3); await page.waitForTimeout(300);
   await page.mouse.click(vw2.width * 0.7, vw2.height * 0.45); await page.waitForTimeout(800);
-  const holes = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.folder === 'Disc golf / Test Park').map(x => ({ n:x.dg.hole, par:x.dg.par, pts:x.points.length, len:Math.round(LF.geo.length(x.points)) }))));
+  const holes = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.folder === 'Disc Golf / Test Park').map(x => ({ n:x.dg.hole, par:x.dg.par, pts:x.points.length, len:Math.round(LF.geo.length(x.points)) }))));
   const h1 = holes.find(h => h.n === '1'), h2 = holes.find(h => h.n === '2');
   check(h1 && h1.pts >= 4 && h1.len > 40 && h1.len < 80, 'hole 1 saved from the walk: ' + JSON.stringify(h1));
   check(h2 && h2.par === '4' && h2.pts === 11, 'hole 2 saved from two taps, par 4, straight fairway: ' + JSON.stringify(h2));
   check(/Hole 3/.test(await page.textContent('.coursebar')), 'the bar moves on to hole 3');
   await page.click('.coursebar [data-c=done]');
-  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Disc golf / Test Park")');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Disc Golf / Test Park")');
   check(await page.isHidden('.coursebar') && await page.evaluate(() => !LF.mode), 'Done closes the bar and opens the course folder');
 
-  const rtrip = await page.evaluate(() => LF.db.all('tracks').then(ts => { const h = ts.filter(t => t.dg && t.folder === 'Disc golf / Test Park'); const g = LF.geo;
+  const rtrip = await page.evaluate(() => LF.db.all('tracks').then(ts => { const h = ts.filter(t => t.dg && t.folder === 'Disc Golf / Test Park'); const g = LF.geo;
     const a = g.parseFile(g.toGPX({ tracks:h })).tracks, b = g.parseFile(g.toKML({ tracks:h })).tracks;
     return { n:h.length, gpx:a.map(t => t.dg && t.dg.hole + '/' + t.dg.par).sort().join(','), kml:b.map(t => t.dg && t.dg.hole + '/' + t.dg.par).sort().join(','), folder:a[0] && a[0].folder }; }));
-  check(rtrip.n === 2 && rtrip.gpx === '1/3,2/4' && rtrip.kml === '1/3,2/4' && rtrip.folder === 'Disc golf / Test Park', 'a course exported to GPX or KML imports back as disc golf holes: ' + JSON.stringify(rtrip));
+  check(rtrip.n === 2 && rtrip.gpx === '1/3,2/4' && rtrip.kml === '1/3,2/4' && rtrip.folder === 'Disc Golf / Test Park', 'a course exported to GPX or KML imports back as disc golf holes: ' + JSON.stringify(rtrip));
 
   // 17. Disc golf: score a round on the course just mapped (2 holes: par 3, par 4), me against Ben.
   await page.evaluate(() => { if(!document.getElementById('sheet').hidden) LF.closeSheet(); });
   await tool('dgscore');
   await page.waitForSelector('#r-course');
-  await page.selectOption('#r-course', 'Disc golf / Test Park');
+  await page.selectOption('#r-course', 'Disc Golf / Test Park');
   await page.fill('#r-add', 'Ben'); await page.click('#sheetBody [data-act=add]');
   check(/Tester[\s\S]*Ben/.test(await page.textContent('#r-sides')), 'players added: ' + (await page.textContent('#r-sides')).replace(/✕/g, ' ').trim());
   await page.click('#sheetBody [data-act=go]');
@@ -498,14 +503,14 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.click('#sheetBody [data-act=track-save]');
   await page.waitForSelector('#sheetBody [data-act=track-show]');
   const rt = await page.evaluate(() => LF.db.all('rounds').then(async r => { const t = await LF.db.get('tracks', r[0].trackId); return t && { folder:t.folder, n:t.points.length, rec:t.recording, name:t.name }; }));
-  check(rt && rt.folder === 'Disc golf / Rounds' && rt.n >= 3 && !rt.rec, 'the track is saved with the round: ' + JSON.stringify(rt));
+  check(rt && rt.folder === 'Disc Golf / Rounds' && rt.n >= 3 && !rt.rec, 'the track is saved with the round: ' + JSON.stringify(rt));
   check(await page.isHidden('#roundChip') && !(await page.evaluate(() => LF.track.recording())), 'then the pill goes and recording stops');
   await page.click('#sheetBack');
   await page.waitForSelector('#sheetBody h3:has-text("Past rounds")', { timeout:5000 }).catch(() => {});
   check(/Past rounds[\s\S]*Test Park/.test(await page.textContent('#sheetBody')), 'past rounds are listed');
 
   // 18. A live round: I invite, Ben opens the link on his phone (no account), and both phones score it.
-  await page.selectOption('#r-course', 'Disc golf / Test Park');
+  await page.selectOption('#r-course', 'Disc Golf / Test Park');
   await page.fill('#r-add', 'Ben'); await page.click('#sheetBody [data-act=add]');
   await page.click('#sheetBody [data-act=go]');
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1")');
@@ -629,17 +634,43 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   check(await page.locator('#r-course option', { hasText:'Pine Test' }).count() === 1, 'Score a round offers the published course');
   await page.evaluate(id => LF.discgolf.openPublic(id), pubd.id);
   await page.waitForSelector('#sheetBody [data-act=copy]'); await page.click('#sheetBody [data-act=copy]');
-  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Disc golf / Pine Test")', { timeout:5000 }).catch(() => {});
-  const mine = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.folder === 'Disc golf / Pine Test').map(x => x.dg.hole + '/' + x.dg.par).sort().join(',')));
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Disc Golf / Pine Test")', { timeout:5000 }).catch(() => {});
+  const mine = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.folder === 'Disc Golf / Pine Test').map(x => x.dg.hole + '/' + x.dg.par).sort().join(',')));
   check(mine === '1/3,2/4', 'Add to my map copies it as disc golf holes: ' + mine);
-  await page.evaluate(() => LF.db.all('tracks').then(t => { const h = t.find(x => x.folder === 'Disc golf / Pine Test' && x.dg.hole === '1'); h.dg.par = '4'; return LF.db.put('tracks', h); }));
+  await page.evaluate(() => LF.db.all('tracks').then(t => { const h = t.find(x => x.folder === 'Disc Golf / Pine Test' && x.dg.hole === '1'); h.dg.par = '4'; return LF.db.put('tracks', h); }));
   await page.click('#menuBtn'); await page.click('.mi[data-m=dgcourses]');
-  await page.waitForSelector('#pub-folder'); await page.selectOption('#pub-folder', 'Disc golf / Pine Test');
+  await page.waitForSelector('#pub-folder'); await page.selectOption('#pub-folder', 'Disc Golf / Pine Test');
   page.once('dialog', d => d.accept());
   await page.click('#sheetBody [data-act=publish]');
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Pine Test")', { timeout:10000 }).catch(() => {});
   const repub = await page.evaluate(() => LF.api('GET', 'courses').then(r => r.courses.filter(c => c.name === 'Pine Test')));
   check(repub.length === 1 && repub[0].id === pubd.id && repub[0].holes[0].par === 4, 'publishing my edited copy updates the same course');
+
+  // 21. Admin: edit a course on the map. Drag the published course's pin and hole 1's tee; then an OpenStreetMap course's pin.
+  const drag = async (sel, dx, dy) => { const b = await page.locator(sel).first().boundingBox(); const x = b.x + b.width / 2, y = b.y + b.height / 2;
+    await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + dx / 2, y + dy / 2, { steps:4 }); await page.mouse.move(x + dx, y + dy, { steps:4 }); await page.mouse.up(); };
+  await page.evaluate(() => LF.closeSheet());
+  await page.evaluate(id => LF.discgolf.openPublic(id), pubd.id);
+  await page.waitForSelector('#sheetBody [data-act=edit]'); await page.click('#sheetBody [data-act=edit]');
+  await page.waitForSelector('.dgaddbar:not([hidden]) [data-e=save]');
+  check(await page.locator('.ce-pin').count() === 1 && await page.locator('.ce-tee').count() === 2 && await page.locator('.ce-bend').count() === 1, 'Edit course shows the pin, both tees and hole 2\'s bend to drag');
+  const ed0 = await page.evaluate(() => LF.dgadmin.editing());
+  await drag('.ce-pin', 40, 30); await drag('.ce-tee', -30, 0);
+  await page.click('.dgaddbar [data-e=save]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Pine Test")', { timeout:10000 }).catch(() => {});
+  const ed = await page.evaluate(() => LF.api('GET', 'courses').then(r => r.courses.find(c => c.name === 'Pine Test')));
+  check(ed && ed.pin && (ed.c[0] !== ed0.pin[0] || ed.c[1] !== ed0.pin[1]) && ed.holes[0].line[0][1] !== repub[0].holes[0].line[0][1] && ed.holes[1].anchors.length === 1 && ed.holes[0].par === 4,
+    'dragging the pin and a tee saves both; the other hole keeps its bend');
+  await page.evaluate(() => { const b = document.getElementById('l-discgolf'); if(!b.checked){ b.checked = true; b.dispatchEvent(new Event('change')); } return LF.discgolf.load(); });
+  const osm = await page.evaluate(() => { const c = LF.discgolf.data().courses.find(x => !x.pub && x.holes && x.holes.length); LF.discgolf.open(c); return { name:c.name, c:c.c, n:c.holes.length }; });
+  await page.waitForSelector('#sheetBody [data-act=edit]'); await page.click('#sheetBody [data-act=edit]');
+  await page.waitForSelector('.dgaddbar:not([hidden]) [data-e=save]');
+  check(await page.locator('.ce-tee').count() === 0 && await page.locator('.ce-pin').count() === 1, 'an OpenStreetMap course offers just its pin');
+  await drag('.ce-pin', 0, 50);
+  await page.click('.dgaddbar [data-e=save]');
+  await page.waitForSelector(`#sheet:not([hidden]) h2:has-text("${osm.name}")`, { timeout:10000 }).catch(() => {});
+  const moved = await page.evaluate(n => LF.discgolf.data().courses.find(x => x.name === n), osm.name);
+  check(moved && moved.pinOnly && moved.c[0] < osm.c[0] && moved.holes.length === osm.n, 'its pin moves and it keeps its own holes: ' + osm.name);
 
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));

@@ -30,7 +30,7 @@ function totals(r, sideId){
 /* ---------- Start ---------- */
 async function start(){
   const [cs, rounds, pubAll] = await Promise.all([courses(), db.all('rounds'), LF.discgolf ? LF.discgolf.pub() : []]);
-  const pubs = pubAll.filter(p => !cs.has('Disc golf / ' + p.name.replace(/\//g, '-')));   // public courses you haven't added to your map
+  const pubs = pubAll.filter(p => p.holes.length && !cs.has(LF.items.dgFolder(p.name)));   // public courses you haven't added to your map
   const open = rounds.filter(r => !r.finished).sort((a, b) => b.updated - a.updated);
   const past = rounds.filter(r => r.finished).sort((a, b) => b.finished - a.finished).slice(0, 12);
   const me = (LF.account.user() && LF.account.user().name) || 'Me';
@@ -165,7 +165,7 @@ function summary(r){
       if(act === 'del' && confirm(r.live ? 'Delete this round from this phone? Others who joined keep their copy.' : 'Delete this round?')){
         await LF.track.endFor(r.id, false); await db.del('rounds', r.id); flash('Round deleted'); start(); }
       if(act === 'track-save'){
-        const t = await LF.track.endFor(r.id, true, { name:`${r.name} round · ${when(r.started)}`, folder:'Disc golf / Rounds', color:DG });
+        const t = await LF.track.endFor(r.id, true, { name:`${r.name} round · ${when(r.started)}`, folder:LF.items.dgFolder('Rounds'), color:DG });
         if(t){ r.trackId = t.id; r = await db.put('rounds', r); flash('Track saved with the round', 3000); }
         summary(r);
       }
@@ -260,7 +260,7 @@ window.addEventListener('hashchange', () => openLink(LF.share.parse(location.has
 
 /* ---------- The round's track and the pill under the search bar ----------
    Every round played on this phone records a GPS track from the start (unless a track is already recording).
-   When the round is finished you choose: save the track with the round (folder "Disc golf / Rounds",
+   When the round is finished you choose: save the track with the round (folder "Disc Golf / Rounds",
    r.trackId) or throw it away. The pill shows the round in progress (or a finished one whose track still
    waits for that choice) and opens it with one tap. */
 async function trackRound(r){

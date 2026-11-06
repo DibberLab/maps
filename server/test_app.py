@@ -120,6 +120,12 @@ check(lc.status_code == 200 and lc.json["holes"] == [{"n": "1", "points": [[70, 
       "a layout picture's holes come back as tee, bends and basket in picture pixels (off-picture ones dropped)")
 check(J(user, "post", "/api/courses/locate", dict(pic, width=10, height=10)).status_code == 403, "only admins find holes")
 os.environ.pop("ANTHROPIC_API_KEY", None)
+J(admin, "post", "/api/courses", {"id": cr["id"], "course": dict(course, pin=[45.7790, -92.4300])})
+check(stranger.get("/api/courses").json["courses"][0]["c"] == [45.779, -92.43], "an admin can place the course pin by hand")
+po = J(admin, "post", "/api/courses", {"course": {"name": "Elver Park", "holes": [], "pin": [43.03, -89.5]}})
+check(po.status_code == 200 and po.json["course"]["holes"] == [] and po.json["course"]["c"] == [43.03, -89.5], "a pin alone moves an OpenStreetMap course's pin")
+check(J(admin, "post", "/api/courses", {"course": {"name": "x", "holes": []}}).status_code == 400, "no holes and no pin is refused")
+J(admin, "delete", f"/api/courses/{po.json['id']}", {})
 check(J(admin, "delete", f"/api/courses/{cr['id']}", {}).status_code == 200 and stranger.get("/api/courses").json["courses"] == [], "an admin deletes a course")
 # Short links: anyone can make one; the same link gets the same code; following it redirects to the full view.
 h = "#map=17/45.80050/-92.40050&base=hyb&layers=parcels&share=AbCdEfGh1234"

@@ -50,6 +50,7 @@ function pub(refresh){
 }
 const norm = n => String(n || '').toLowerCase().replace(/\b(disc golf|dgc|course|park|the)\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 function asCourse(p, osm){
+  if(!p.holes.length) return Object.assign({}, osm, { c:p.c, pub:p.id, pinOnly:true });   // only the pin was moved
   const holes = p.holes.map(h => ({ ref:h.n, par:h.par, ft:h.ft, line:h.line, anchors:h.anchors, m:geo.length(h.line) }));
   const info = Object.assign({}, osm && osm.info, p.address ? { address:p.address } : {}, p.notes ? { description:p.notes } : {});
   return Object.assign({}, osm || {}, { name:p.name, c:p.c, n:holes.length, par:holes.reduce((a, h) => a + (+h.par || 0), 0), holes, info,
@@ -60,7 +61,7 @@ function merge(){
   const out = base.slice();
   (pubList || []).forEach(p => {
     const i = out.findIndex(c => !c.pub && norm(c.name) && norm(c.name) === norm(p.name) && geo.dist(c.c, p.c) < 5000);
-    if(i >= 0) out[i] = asCourse(p, out[i]); else out.push(asCourse(p));
+    if(i >= 0) out[i] = asCourse(p, out[i]); else if(p.holes.length) out.push(asCourse(p));
   });
   data.courses = out;
 }
@@ -131,13 +132,14 @@ function open(c, holeRef){
       /* UDisc: a direct link when we know the course page, otherwise a web search of udisc.com. */
       (c.udisc || /udisc\.com/i.test(web || '') ? `<a class="btn" href="${esc(c.udisc || web)}" target="_blank" rel="noopener">UDisc</a>`
         : `<a class="btn" href="https://duckduckgo.com/?q=${encodeURIComponent('site:udisc.com/courses ' + c.name.replace(/^Disc golf at /, '') + (/disc golf/i.test(c.name) ? '' : ' disc golf'))}" target="_blank" rel="noopener">Find on UDisc</a>`) +
-      (c.pub ? '<button class="btn" data-act="copy">Add to my map</button>' : '') +
+      (c.pub && !c.pinOnly ? '<button class="btn" data-act="copy">Add to my map</button>' : '') +
       '<button class="btn" data-act="save">Save waypoint</button>' +
-      (c.pub && LF.account.user() && LF.account.user().role === 'admin' ? '<button class="btn danger" data-act="unpublish">Remove course</button>' : '') +
+      (isAdmin() ? '<button class="btn" data-act="edit">Edit course</button>' : '') +
+      (c.pub && !c.pinOnly && isAdmin() ? '<button class="btn danger" data-act="unpublish">Remove course</button>' : '') +
       '</div>' + LF.shadeSwitch() +
     (rows.length ? '<div class="block"><dl>' + rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl></div>' : '') +
     (i.description ? `<div class="block"><p class="notes">${esc(i.description)}</p></div>` : '') + table +
-    (c.pub ? '<p class="note">Hole layout added by Line Fence. Add it to your map to score rounds on it or change the holes.</p>' :
+    (c.pub && !c.pinOnly ? '<p class="note">Hole layout added by Line Fence. Add it to your map to score rounds on it or change the holes.</p>' :
     c.src ? `<p class="note">Course details from ${esc(c.src)}. The pin is ${esc(c.located || 'approximate')}. ` +
       `Know the course? <a href="https://www.openstreetmap.org/#map=17/${c.c[0]}/${c.c[1]}" target="_blank" rel="noopener">Map it on OpenStreetMap</a> and its holes and tees will show up here.</p>` :
     `<p class="note">Course data © OpenStreetMap contributors. Missing or wrong? ` +
@@ -149,6 +151,7 @@ function open(c, holeRef){
       if(act === 'route') LF.route.to(c.name, c.c);
       if(act === 'save' && LF.account.require('waypoints')) LF.items.newWaypoint(c.c, { name:c.name });
       if(act === 'copy') copyToMine(c);
+      if(act === 'edit') LF.dgadmin.editCourse(c);
       if(act === 'unpublish' && confirm(`Remove ${c.name} from the public course list? Copies people added to their maps stay.`))
         LF.api('DELETE', 'courses/' + c.pub).then(() => { LF.flash('Removed ' + c.name); LF.closeSheet(); refresh(); }).catch(e => LF.flash('Could not remove it: ' + e.message, 5000));
       if(act === 'hole'){ const h = holes.find(x => String(x.ref || '') === el.dataset.ref); if(h){ focus(h); el.parentNode.querySelectorAll('tr').forEach(r => r.classList.toggle('on', r === el)); } }
@@ -166,11 +169,14 @@ function focus(h, keepView){
   if(!keepView) fit(L.latLngBounds(h.line), 18);
 }
 const fit = (b, z) => LF.fitVisible(b, z);
-/* A public course into my own map: a folder "Disc golf / <name>" of disc golf holes (ids pc-<course>-<hole>, so doing
+const isAdmin = () => { const u = LF.account && LF.account.user(); return !!(u && u.role === 'admin' && u.status === 'approved'); };
+/* While an admin edits a course, the layer fades so the points being dragged stand out. */
+function dim(on){ ['dgPane', 'dgMarkers'].forEach(p => { map.getPane(p).style.opacity = on ? .25 : ''; }); }
+/* A public course into my own map: a folder "Disc Golf / <name>" of disc golf holes (ids pc-<course>-<hole>, so doing
    it again updates them instead of adding copies). Then rounds, throws and the hole editor all work on it. */
 async function copyToMine(c){
   if(!LF.account.require('disc golf courses')) return;
-  const folder = 'Disc golf / ' + c.name.replace(/\//g, '-');
+  const folder = LF.items.dgFolder(c.name);
   for(const h of c.holes){
     const id = 'pc-' + c.pub + '-' + String(h.ref).replace(/[^\w-]/g, '');
     const cur = await LF.db.get('tracks', id);
@@ -200,7 +206,7 @@ function find(q){
 box.addEventListener('change', () => { LF.prefs.set('discgolfOn', box.checked); show(box.checked); });
 map.on('moveend zoomend', view);
 show(on);
-LF.discgolf = { find:q => { const c = find(q); if(c){ open(c); fit(bounds(c), 16); } return !!c; }, open, data:() => data, load, pub, refresh,
+LF.discgolf = { dim, find:q => { const c = find(q); if(c){ open(c); fit(bounds(c), 16); } return !!c; }, open, data:() => data, load, pub, refresh,
   openPublic:async id => { await pub(); const p = (pubList || []).find(x => x.id === id); if(!p) return;
     const c = (data && data.courses.find(x => x.pub === id)) || asCourse(p); open(c); fit(bounds(c), 17); } };
 })(window.LF);

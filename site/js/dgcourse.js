@@ -31,7 +31,7 @@ async function start(){
   LF.showSheet('<h2>Map a course</h2><div class="small">Saved as a folder of holes</div>',
     `<form class="edit" onsubmit="return false">
       <label>Course name<input id="c-name" maxlength="60" placeholder="e.g. Fish Lake" autocomplete="off"></label>
-      <label>Folder<input id="c-folder" list="c-known" maxlength="80" value="Disc golf / "><datalist id="c-known">${opts}</datalist></label>
+      <label>Folder<input id="c-folder" list="c-known" maxlength="80" value="${esc(LF.items.dgParent())} / "><datalist id="c-known">${opts}</datalist></label>
       <div class="row2"><label>First hole #<input id="c-hole" inputmode="numeric" value="1"></label>
         <label>Par<select id="c-par">${[2, 3, 4, 5].map(v => `<option${v === 3 ? ' selected' : ''}>${v}</option>`).join('')}</select></label></div>
       <p class="note">Walk to the first tee, tap <b>Tee pad here</b>, walk the fairway, tap <b>Basket here</b> at the basket. Or tap the map to place
@@ -42,7 +42,7 @@ async function start(){
       const $ = id => document.getElementById(id);
       if(act === 'cancel') LF.closeSheet();
       if(act === 'go'){
-        const name = $('c-name').value.trim(), folder = LF.items.cleanFolder($('c-folder').value) || ('Disc golf / ' + (name || 'Course'));
+        const name = $('c-name').value.trim(), folder = LF.items.cleanFolder($('c-folder').value) || LF.items.dgFolder(name || 'Course');
         if(!name && !known.has(folder)){ flash('Name the course first'); return; }
         st = { name:name || LF.geo.folderPath(folder).pop(), folder, hole:Math.max(1, parseInt($('c-hole').value, 10) || 1), par:+$('c-par').value, tee:null, pts:[] };
         save(); LF.closeSheet(); resume();
@@ -51,7 +51,7 @@ async function start(){
     } });
   const name = document.getElementById('c-name'), folder = document.getElementById('c-folder'), hole = document.getElementById('c-hole');
   let folderTouched = false;
-  name.addEventListener('input', () => { if(!folderTouched) folder.value = 'Disc golf / ' + name.value.trim(); });
+  name.addEventListener('input', () => { if(!folderTouched) folder.value = LF.items.dgParent() + ' / ' + name.value.trim(); });
   folder.addEventListener('input', () => { folderTouched = true; const f = LF.items.cleanFolder(folder.value); if(known.has(f)) hole.value = known.get(f) + 1; });
   setTimeout(() => name.focus(), 50);
 }

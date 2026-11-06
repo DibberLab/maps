@@ -650,6 +650,9 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   const drag = async (sel, dx, dy) => { const b = await page.locator(sel).first().boundingBox(); const x = b.x + b.width / 2, y = b.y + b.height / 2;
     await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + dx / 2, y + dy / 2, { steps:4 }); await page.mouse.move(x + dx, y + dy, { steps:4 }); await page.mouse.up(); };
   await page.evaluate(() => LF.closeSheet());
+  // (Not in my map for this part: take my copy out so the public layout itself is edited.)
+  await page.evaluate(() => LF.db.all('tracks').then(ts => Promise.all(ts.filter(t => t.folder === 'Disc Golf / Pine Test').map(t => LF.db.del('tracks', t.id)))));
+  await page.waitForTimeout(1500);
   await page.evaluate(id => LF.discgolf.openPublic(id), pubd.id);
   await page.waitForSelector('#sheetBody [data-act=edit]'); await page.click('#sheetBody [data-act=edit]');
   await page.waitForSelector('.dgaddbar:not([hidden]) [data-e=save]');
@@ -661,6 +664,28 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   const ed = await page.evaluate(() => LF.api('GET', 'courses').then(r => r.courses.find(c => c.name === 'Pine Test')));
   check(ed && ed.pin && (ed.c[0] !== ed0.pin[0] || ed.c[1] !== ed0.pin[1]) && ed.holes[0].line[0][1] !== repub[0].holes[0].line[0][1] && ed.holes[1].anchors.length === 1 && ed.holes[0].par === 4,
     'dragging the pin and a tee saves both; the other hole keeps its bend');
+  // Your map is the course: with Pine Test in my map, moving a tee there updates the public course (distances kept),
+  // the layer stops drawing its own copy, and Edit course only moves the pin.
+  await page.evaluate(() => LF.closeSheet());
+  await page.evaluate(id => LF.discgolf.openPublic(id), pubd.id);
+  await page.waitForSelector('#sheetBody [data-act=copy]'); await page.click('#sheetBody [data-act=copy]');
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => LF.db.all('tracks').then(ts => { const h = ts.find(t => t.folder === 'Disc Golf / Pine Test' && t.dg.hole === '1');
+    h.points = h.points.map(p => [p[0] + 0.0001, p[1]]); return LF.db.put('tracks', h); }));
+  await page.waitForTimeout(4500);   // the public course follows ~3 s after the change
+  const auto = await page.evaluate(id => LF.api('GET', 'courses').then(r => r.courses.find(x => x.id === id)), pubd.id);
+  check(auto && Math.abs(auto.holes[0].line[0][0] - ed.holes[0].line[0][0] - 0.0001) < 0.00002 && auto.holes[0].ft === 200 && auto.pin,
+    'moving a hole in my map updates the public course (distance and pin kept)');
+  check(await page.evaluate(id => LF.discgolf.isMine(LF.discgolf.data() ? LF.discgolf.data().courses.find(c => c.pub === id) || { pub:id } : { pub:id }), pubd.id), 'the layer leaves my own course to my map (no second layout)');
+  await page.evaluate(id => LF.discgolf.openPublic(id), pubd.id);
+  await page.waitForSelector('#sheetBody [data-act=edit]'); await page.click('#sheetBody [data-act=edit]');
+  await page.waitForSelector('.dgaddbar:not([hidden]) [data-e=save]');
+  check(await page.locator('.ce-tee').count() === 0 && /edit them there/.test(await page.textContent('.dgaddbar')), 'Edit course on my own course moves just the pin');
+  await drag('.ce-pin', 20, 0); await page.click('.dgaddbar [data-e=save]'); await page.waitForTimeout(1500);
+  const pinOnly = await page.evaluate(id => LF.api('GET', 'courses').then(r => r.courses.find(x => x.id === id)), pubd.id);
+  check(pinOnly && pinOnly.holes.length === 2 && pinOnly.c[1] > auto.c[1], 'its pin moves and its holes stay');
+  check(await page.evaluate(() => LF.discgolf.sameCourse({ name:'Tjiny Acres', c:[45.7778, -92.4313] }, { name:'Tjiny Acres (putter course)', c:[45.7779, -92.4320] })
+    && !LF.discgolf.sameCourse({ name:'Tjiny Acres', c:[45.7778, -92.4313] }, { name:'Tjader Acres Disc Golf Course', c:[45.7778, -92.4319] })), 'the same course under two names counts once');
   await page.evaluate(() => { const b = document.getElementById('l-discgolf'); if(!b.checked){ b.checked = true; b.dispatchEvent(new Event('change')); } return LF.discgolf.load(); });
   const osm = await page.evaluate(() => { const c = LF.discgolf.data().courses.find(x => !x.pub && x.holes && x.holes.length); LF.discgolf.open(c); return { name:c.name, c:c.c, n:c.holes.length }; });
   await page.waitForSelector('#sheetBody [data-act=edit]'); await page.click('#sheetBody [data-act=edit]');

@@ -56,15 +56,39 @@ function asCourse(p, osm){
   return Object.assign({}, osm || {}, { name:p.name, c:p.c, n:holes.length, par:holes.reduce((a, h) => a + (+h.par || 0), 0), holes, info,
     pub:p.id, outline:null, tees:null, baskets:null, src:null });
 }
+/* One course, however it's named: "Tjiny Acres" = "Tjiny Acres (putter course)" = "Tjiny Acres Disc Golf Course",
+   when they're within 3 km of each other. */
+const key = n => norm(String(n || '').replace(/\(.*?\)/g, ' '));
+function sameCourse(a, b){
+  const x = key(a.name), y = key(b.name);
+  return !!x && !!y && geo.dist(a.c, b.c) < 3000 && (x === y || x.startsWith(y + ' ') || y.startsWith(x + ' '));
+}
 function merge(){
   if(!data || !base) return;
   const out = base.slice();
-  (pubList || []).forEach(p => {
-    const i = out.findIndex(c => !c.pub && norm(c.name) && norm(c.name) === norm(p.name) && geo.dist(c.c, p.c) < 5000);
-    if(i >= 0) out[i] = asCourse(p, out[i]); else if(p.holes.length) out.push(asCourse(p));
+  (pubList || []).slice().sort((a, b) => (a.updated || 0) - (b.updated || 0)).forEach(p => {
+    const i = out.findIndex(c => sameCourse(c, p));
+    if(i < 0){ if(p.holes.length) out.push(asCourse(p)); return; }
+    const cur = out[i];
+    if(!p.holes.length && cur.pub && !cur.pinOnly) out[i] = Object.assign({}, cur, { c:p.c });   // a pin moved on a published layout
+    else out[i] = asCourse(p, cur);
   });
   data.courses = out;
 }
+
+/* Courses in the person's own map (a Disc Golf folder of holes): there the map's own holes are the course, so the
+   layer shows only the pin, not a second set of hole lines. */
+let mine = { ids:new Set(), keys:new Set() };
+async function loadMine(){
+  if(!(await LF.db.ready())) return;
+  const ids = new Set(), keys = new Set();
+  (await LF.db.all('tracks')).filter(t => t.dg && t.folder).forEach(t => { if(t.fromCourse) ids.add(t.fromCourse); keys.add(key(geo.folderPath(t.folder).pop())); });
+  mine = { ids, keys }; view();
+}
+const isMine = c => (c.pub && mine.ids.has(c.pub)) || mine.keys.has(key(c.name));
+let mineT = 0;
+LF.listen('dbWrite', e => { if(e.store === 'tracks'){ clearTimeout(mineT); mineT = setTimeout(loadMine, 800); } });
+setTimeout(loadMine, 1000);
 /* After an admin adds, changes or removes a course. */
 async function refresh(){ await pub(true); if(data){ merge(); build(); } }
 function build(){
@@ -89,7 +113,7 @@ function view(){
   layout.clearLayers();
   if(z < LAYOUT_ZOOM){ map.removeLayer(layout); return; }
   const b = map.getBounds().pad(0.3);
-  data.courses.filter(c => b.contains(c.c) || (c.holes && c.holes.some(h => b.contains(h.line[0])))).forEach(c => drawLayout(c, layout));
+  data.courses.filter(c => !isMine(c) && (b.contains(c.c) || (c.holes && c.holes.some(h => b.contains(h.line[0]))))).forEach(c => drawLayout(c, layout));
   layout.addTo(map);
 }
 function drawLayout(c, group){
@@ -206,7 +230,7 @@ function find(q){
 box.addEventListener('change', () => { LF.prefs.set('discgolfOn', box.checked); show(box.checked); });
 map.on('moveend zoomend', view);
 show(on);
-LF.discgolf = { dim, find:q => { const c = find(q); if(c){ open(c); fit(bounds(c), 16); } return !!c; }, open, data:() => data, load, pub, refresh,
+LF.discgolf = { dim, sameCourse, key, isMine:c => isMine(c), find:q => { const c = find(q); if(c){ open(c); fit(bounds(c), 16); } return !!c; }, open, data:() => data, load, pub, refresh,
   openPublic:async id => { await pub(); const p = (pubList || []).find(x => x.id === id); if(!p) return;
     const c = (data && data.courses.find(x => x.pub === id)) || asCourse(p); open(c); fit(bounds(c), 17); } };
 })(window.LF);

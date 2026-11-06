@@ -38,14 +38,45 @@ async function list(){
       if(act === 'open'){ layerOn(); LF.discgolf.openPublic(el.dataset.id); }
       if(act === 'publish'){
         const f = document.getElementById('pub-folder').value, ts = mine.get(f); if(!ts) return;
-        const name = geo.folderPath(f).pop();
-        const same = pub.find(c => c.id === ts[0].fromCourse) || pub.find(c => c.name.toLowerCase() === name.toLowerCase());
+        const same = linked(pub, f, ts);
         if(same && !confirm(`Replace the published ${same.name} with the holes in “${f}”?`)) return;
-        const course = Object.assign({ name }, same ? { address:same.address, notes:same.notes } : {},
-          { holes:ts.map((t, i) => ({ n:t.dg.hole || String(i + 1), par:+t.dg.par || 3, line:t.points.map(p => [p[0], p[1]]), anchors:t.dg.anchors || [] })) });
-        await publish(course, same && same.id);
+        const id = await publish(folderCourse(f, ts, same), same && same.id);
+        if(id) await link(ts, id);
       }
     } });
+}
+/* A folder of holes and the published course it is: the one its holes came from or were published as (fromCourse), or
+   the published course with the same name nearby. */
+function linked(pub, f, ts){
+  const name = geo.folderPath(f).pop(), c = ts[0].points[0];
+  return pub.find(p => p.id === ts[0].fromCourse) || pub.find(p => LF.discgolf.sameCourse({ name, c }, { name:p.name, c:p.c }));
+}
+const folderCourse = (f, ts, same) => Object.assign({ name:same ? same.name : geo.folderPath(f).pop() }, same ? { address:same.address, notes:same.notes, pin:same.pin || null } : {},
+  { holes:ts.map((t, i) => { const n = String(t.dg.hole || i + 1), was = same && same.holes.find(h => String(h.n) === n);   // keep the listed distance
+    return Object.assign({ n, par:+t.dg.par || 3, line:t.points.map(p => [+p[0].toFixed(7), +p[1].toFixed(7)]), anchors:t.dg.anchors || [] }, was && was.ft ? { ft:was.ft } : {}); }) });
+async function link(ts, id){ for(const t of ts) if(t.fromCourse !== id) await LF.db.put('tracks', Object.assign({}, t, { fromCourse:id })); }
+
+/* Your map is the course: when an admin changes a hole in a folder that's published (drags a tee, adds a hole), the
+   public course follows a few seconds later. Only real changes are sent. */
+const dirtyFolders = new Set(); let pubT = 0;
+LF.listen('dbWrite', e => {
+  if(e.store !== 'tracks') return;
+  const u = LF.account && LF.account.user(); if(!u || u.role !== 'admin' || u.status !== 'approved') return;
+  LF.db.get('tracks', e.id).then(t => { if(t && t.dg && t.folder) dirtyFolders.add(t.folder); else if(e.deleted) dirtyFolders.add('*'); });
+  clearTimeout(pubT); pubT = setTimeout(autoPublish, 3000);
+});
+async function autoPublish(){
+  const which = new Set(dirtyFolders); dirtyFolders.clear();
+  const [pub, mine] = await Promise.all([LF.discgolf.pub(), myCourses()]);
+  for(const [f, ts] of mine){
+    if(!which.has(f) && !which.has('*')) continue;
+    const same = linked(pub, f, ts); if(!same || !same.holes.length) continue;   // not published (pin-only entries don't count)
+    const course = folderCourse(f, ts, same);
+    const strip = hs => JSON.stringify(hs.map(h => [String(h.n), +h.par, h.line.map(p => [+(+p[0]).toFixed(6), +(+p[1]).toFixed(6)]), h.anchors || []]));
+    if(strip(course.holes) === strip(same.holes)) continue;
+    try{ await LF.api('POST', 'courses', { id:same.id, course }); await LF.discgolf.refresh(); flash(`Updated the public ${same.name}`, 2500); }
+    catch(e){ flash(`Couldn't update the public ${same.name}: ${e.message}`, 5000); }
+  }
 }
 const layerOn = () => { const b = document.getElementById('l-discgolf'); if(b && !b.checked){ b.checked = true; b.dispatchEvent(new Event('change')); } };
 async function publish(course, id){
@@ -336,7 +367,7 @@ let E = null;
 const edits = L.layerGroup();
 function editCourse(c){
   if(A || E) return;
-  const layout = c.pub && !c.pinOnly;
+  const layout = c.pub && !c.pinOnly && !LF.discgolf.isMine(c);   // in my map, the map's own holes are the course: pin only here
   E = { c, pin:c.c.slice(), holes:layout ? c.holes.map(h => ({ ref:h.ref, par:h.par, ft:h.ft,
     keys:[h.line[0]].concat((h.anchors || []).map(i => h.line[i]), [h.line[h.line.length - 1]]).map(p => [p[0], p[1]]) })) : [], changed:false };
   LF.closeSheet(); LF.mode = 'dgedit'; LF.discgolf.dim(true);
@@ -368,7 +399,7 @@ const PIN_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" str
 function showEdit(){
   if(!E) return;
   bar.hidden = false;
-  bar.innerHTML = `<div class="cb-head"><span><b>Edit ${esc(E.c.name)}</b></span><span class="small">${E.holes.length ? 'Drag the course pin, tee pads (numbered), bends (white) and baskets (yellow)' : 'Drag the course pin to where it belongs (the parking lot or first tee)'}</span></div>
+  bar.innerHTML = `<div class="cb-head"><span><b>Edit ${esc(E.c.name)}</b></span><span class="small">${E.holes.length ? 'Drag the course pin, tee pads (numbered), bends (white) and baskets (yellow)' : 'Drag the course pin to where it belongs (the parking lot or first tee)' + (E.c.pub && LF.discgolf.isMine(E.c) ? '. Its holes are in your map: edit them there and the public course follows.' : '')}</span></div>
     <div class="cb-btns"><button class="btn primary" data-e="save"${E.changed ? '' : ' disabled'}>Save</button><button class="btn" data-e="cancel">Cancel</button></div>`;
 }
 async function saveEdit(btn){
@@ -378,7 +409,8 @@ async function saveEdit(btn){
   if(E.holes.length && p){
     course = { name:p.name, address:p.address, notes:p.notes, pin:E.pinMoved ? E.pin : p.pin || null,
       holes:E.holes.map(h => Object.assign({ n:String(h.ref), par:+h.par || 3 }, h.ft ? { ft:h.ft } : {}, line(h.keys))) };
-  } else course = { name:E.c.name, holes:[], pin:E.pin };
+  } else if(p && p.holes.length) course = { name:p.name, address:p.address, notes:p.notes, pin:E.pin, holes:p.holes };   // just the pin
+  else course = { name:E.c.name, holes:[], pin:E.pin };
   try{
     const res = await LF.api('POST', 'courses', id ? { id, course } : { course });
     const name = E.c.name; stopEdit();
@@ -393,5 +425,5 @@ bar.addEventListener('click', e => {
   if(b.dataset.e === 'save') saveEdit(b);
 });
 
-LF.dgadmin = { list, add:addStart, editCourse, editing:() => E && { holes:E.holes.map(h => h.keys.length), pin:E.pin.slice(), changed:E.changed }, state:() => A && { step:A.step, cur:A.cur, holes:A.holes.map(p => p.length), mpp:A.mpp, rot:A.rot, C:A.C.slice(), ft:A.holes.map(p => Math.round(ftOf(p))) } };
+LF.dgadmin = { list, add:addStart, editCourse, autoPublish, editing:() => E && { holes:E.holes.map(h => h.keys.length), pin:E.pin.slice(), changed:E.changed }, state:() => A && { step:A.step, cur:A.cur, holes:A.holes.map(p => p.length), mpp:A.mpp, rot:A.rot, C:A.C.slice(), ft:A.holes.map(p => Math.round(ftOf(p))) } };
 })(window.LF);

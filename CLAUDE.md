@@ -115,6 +115,11 @@ site/                 the whole app: static files, no build step
                       layout each hole's tee, bends (anchors) and basket; holes are rebuilt with line() on Save. course.pin places
                       the pin by hand. An OSM course saves as a pin-only course (holes [] + pin) that the layer lays over it,
                       keeping the OSM holes (asCourse → pinOnly).
+                      Your map is the course: a Disc Golf folder linked to a published course (tracks' fromCourse, set on publish /
+                      Add to my map, or sameCourse by name) republishes ~3 s after an admin changes a hole (autoPublish; only real
+                      changes; listed distances and pin kept). The layer draws no hole lines for courses in your own map (isMine),
+                      and Edit course on one moves just its pin. sameCourse(): names equal or one extends the other once
+                      "(…)" and words like "disc golf", "course" are dropped, within 3 km, so a course shows once.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

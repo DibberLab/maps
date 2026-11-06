@@ -88,7 +88,7 @@ function use(){
 }
 /* The photo shows the spot at the tapped place; it truly is at the GPS spot: shift by the difference (on top of any shift
    already on, since the tap was on the shifted photo). */
-map.on('click', e => {
+map.on('click', e => {   // (saved items pass their taps on as map clicks while a tool is on, so this gets taps on them too)
   if(LF.mode !== 'photo' || !S || S.step !== 'tap') return;
   const t = [e.latlng.lat, e.latlng.lng], g = S.gps.ll;
   S.e = S.before.e + (g[1] - t[1]) * mLng(g[0]); S.n = S.before.n + (g[0] - t[0]) * M_LAT;

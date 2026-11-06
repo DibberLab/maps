@@ -708,8 +708,12 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.click('.photobar [data-p=use]');
   await page.waitForSelector('.photobar [data-p=again]');
   const gpsPt = await page.evaluate(() => { const p = LF.map.latLngToContainerPoint([45.860003, -92.62]); return { x:p.x, y:p.y }; });
+  // A saved area (a house outline) right under the spot: the tap still goes to the photo tool, not to the area.
+  await page.evaluate(() => LF.db.put('drawings', { id:'house', kind:'area', name:'House', points:[[45.86005, -92.62005], [45.86005, -92.61985], [45.85995, -92.61985], [45.85995, -92.62005]] }));
+  await page.waitForTimeout(800);
   await page.mouse.click(gpsPt.x + 40, gpsPt.y);   // the spot shows 40 px east on the photo
   await page.waitForSelector('.photobar [data-p=done]');
+  check(await page.evaluate(() => document.getElementById('sheet').hidden), 'a tap on top of a saved area goes to the photo tool');
   const sh1 = await page.evaluate(() => LF.photoShift.get());
   check(sh1.length === 1 && sh1[0].e < -1 && Math.abs(sh1[0].n) < 0.5 && await page.evaluate(() => /translate/.test(document.querySelector('.leaflet-tile-pane').style.transform)), 'tapping the spot shifts the photo to the GPS: ' + JSON.stringify(sh1));
   await page.click('.photobar [data-p=nudge][data-d=n]');

@@ -140,9 +140,12 @@ if(show) layer.addTo(map);
 const labels = () => document.getElementById('map').classList.toggle('wp-labels', map.getZoom() >= 15);
 map.on('zoomend', labels); labels();
 
-/* A tap on a saved item opens it; while a drawing tool is active it adds a point there instead. */
+/* A tap on a saved item opens it. While a tool is active the tap belongs to the tool: a drawing tool adds a point there,
+   any other (Map a course, Measure a throw, Line up the photo…) gets it as a map tap. */
 function tap(store, r){ return e => { L.DomEvent.stopPropagation(e);
-  if(LF.mode) LF.draw.add([e.latlng.lat, e.latlng.lng]); else open(store, r.id); }; }
+  if(!LF.mode) return open(store, r.id);
+  if(LF.draw.active()) LF.draw.add([e.latlng.lat, e.latlng.lng]);
+  else map.fire('click', { latlng:e.latlng, layerPoint:e.layerPoint, containerPoint:e.containerPoint, originalEvent:e.originalEvent }); }; }
 function wpIcon(w){
   const c = wpColor(w);
   return L.divIcon({ className:'wp-wrap', iconSize:[32, 32], iconAnchor:[16, 16],

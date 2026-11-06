@@ -96,9 +96,12 @@ site/                 the whole app: static files, no build step
                       LF.mode='throw'.
   js/dgadmin.js       public disc golf courses (Menu > Admin > Disc golf courses; admins only). Server table courses:
                       GET /api/courses (public) {courses:[{id, name, c, holes:[{n, par, ft, line, anchors}], address, notes, updated}]},
-                      POST /api/courses {course[, id]} and DELETE /api/courses/<id> (admin). Add course: name, pars, distances, a
-                      layout picture (screenshot) → the picture lies over the map (pane dgPicPane, CSS transform from C/mpp/rot)
-                      → tap tee, bends, basket per hole (kept in picture pixels) → Done sizes it from the listed distances
+                      POST /api/courses {course[, id]} and DELETE /api/courses/<id> (admin). Add course: name, pars, distances
+                      (or "Read pars & distances from a screenshot": POST /api/courses/read → Claude reads the hole table), a
+                      layout picture → the picture lies over the map (pane dgPicPane, CSS transform from C/mpp/rot) → Claude
+                      marks tee, bends, basket per hole (POST /api/courses/locate; picture sent at ≤1568 px, coordinates
+                      scaled back; holes it misses stay empty) → check each, Redo hole and tap tee, bends, basket by hand
+                      (kept in picture pixels) → Done sizes it from the listed distances
                       (median ratio) → drag / pinch-turn / ⟲⟳ −+ to line it up with the aerial → Publish. The picture never
                       leaves the phone. "Publish a course from my map" sends a folder of dg holes (updates the course with the
                       same name, or the one it was copied from: track.fromCourse). discgolf.js merges published courses into the
@@ -267,6 +270,9 @@ script-src: 'self' (no inline scripts, no JSONP since Phase 1)
 - `Permissions-Policy` must keep `geolocation=(self)`, or the GPS button fails. (budget's config sets `geolocation=()`; don't copy it.)
 - **Deploying is pushing to `main`.** GitHub Actions SSHes in with a key locked to `/usr/local/bin/maps-deploy`, which pulls, restarts `linefence-api` when `server/` changed (reinstalling packages if `server/requirements.txt` changed), and checks the page and `/api/health` answer. See `deploy/AUTODEPLOY.md`.
 - **The API on the droplet:** systemd `linefence-api` (gunicorn, 127.0.0.1:8010, user `linefence`), venv `/var/www/maps/.venv`, settings `/etc/linefence.env` (`LF_DB`, `LF_ADMIN_EMAILS`; the admin email is kept there, never in this public repo), database `/var/lib/linefence/linefence.db`, nightly copies in `/var/backups/linefence` (14 days, `/etc/cron.daily/linefence-backup`). Logs: `journalctl -u linefence-api`.
+- **Claude API** (Add course reads screenshots): `ANTHROPIC_API_KEY` in `/etc/linefence.env`, never in the repo. server/app.py
+  `ask_claude` (anthropic SDK, claude-opus-5-5, effort low, JSON-schema output, server-side fallback, 45 s, no retries);
+  gunicorn runs with `--timeout 60` (deploy/linefence-api.service) so a slow read isn't killed. Tests stub `srv.ask_claude`.
 - To add another admin without the portal: add the email to `LF_ADMIN_EMAILS` in `/etc/linefence.env` and restart `linefence-api` before they sign up. In the portal, Make admin works for any approved account.
 - One-time setup is `deploy/setup-from-mac.sh`, run on Andrew's Mac, the only machine with the droplet SSH key. Cloud sessions can't reach the droplet.
 - Server-ops discipline: `nginx -t`, then reload, then commit and push `/etc/nginx` from the server. Stage files by name there, never `git add -A`.

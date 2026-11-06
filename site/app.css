@@ -403,6 +403,10 @@ button.brand .burger{margin-right:12px}
   box-shadow:0 0 0 2px #e8590c}
 .coursebar .btn.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .dgaddbar .cb-btns .btn{flex:1 0 auto}
+.readbox{background:var(--panel-2);border-radius:8px;padding:10px;margin:6px 0 10px}
+.readbox .small.bad{color:#b91c1c}
+form.edit label.check{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:14px;margin-top:10px}
+form.edit label.check input{display:inline-block;width:20px;height:20px;margin:0;padding:0;flex:none}
 
 /* Disc golf scoring (dgscore.js). */
 .pchips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}

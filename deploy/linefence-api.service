@@ -10,7 +10,7 @@ User=linefence
 Group=linefence
 WorkingDirectory=/var/www/maps/server
 EnvironmentFile=/etc/linefence.env
-ExecStart=/var/www/maps/.venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8010 --access-logfile - app:app
+ExecStart=/var/www/maps/.venv/bin/gunicorn --workers 2 --timeout 60 --bind 127.0.0.1:8010 --access-logfile - app:app
 Restart=on-failure
 # The app only needs to write its database folder.
 ProtectSystem=strict

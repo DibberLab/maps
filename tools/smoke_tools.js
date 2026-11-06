@@ -575,20 +575,38 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForFunction(() => window.LF && LF.dgadmin && LF.account.user());
   await page.click('#menuBtn'); await page.click('.mi[data-m=dgcourses]');
   await page.waitForSelector('#sheetBody [data-act=add]'); await page.click('#sheetBody [data-act=add]');
+  // Read pars & distances from a screenshot: the server's Claude call is stubbed here (the test server has no key).
+  await page.route('**/api/courses/read', r => r.fulfill({ status:200, contentType:'application/json',
+    body:JSON.stringify({ holes:[{ n:'1', par:3, ft:251 }, { n:'2', par:4, ft:508 }], layout:'2 Hole' }) }));
+  const tablePng = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 300; c.height = 100; return c.toDataURL('image/png').split(',')[1]; });
+  const [readReq] = await Promise.all([page.waitForRequest('**/api/courses/read'),
+    page.setInputFiles('#a-table', { name:'table.png', mimeType:'image/png', buffer:Buffer.from(tablePng, 'base64') })]);
+  await page.waitForFunction(() => /Read 2 holes/.test(document.getElementById('a-read').textContent));
+  const sent = JSON.parse(readReq.postData());
+  check(await page.inputValue('#a-pars') === '3 4' && await page.inputValue('#a-fts') === '251 508' && sent.media_type === 'image/jpeg' && sent.data.length > 100,
+    'a pars table screenshot fills in the pars and distances: ' + (await page.textContent('#a-read')).trim());
+  await page.unroute('**/api/courses/read');
   await page.fill('#a-name', 'Pine Test'); await page.fill('#a-pars', '3 4'); await page.fill('#a-fts', '200, 300');
   check(/2 holes, par 7, 2 distances/.test(await page.textContent('#a-count')), 'the form counts holes and par as you type');
   const png = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 600; c.height = 400; const x = c.getContext('2d');
     x.fillStyle = '#3a6'; x.fillRect(0, 0, 600, 400); x.strokeStyle = '#fff'; x.lineWidth = 6; x.beginPath(); x.moveTo(100, 300); x.lineTo(250, 250); x.moveTo(300, 300); x.lineTo(400, 200); x.lineTo(500, 120); x.stroke();
     return c.toDataURL('image/png').split(',')[1]; });
   await page.setInputFiles('#a-pic', { name:'layout.png', mimeType:'image/png', buffer:Buffer.from(png, 'base64') });
+  // Claude marks the holes on the layout picture (stubbed: the test server has no key). Hole 2 bends once.
+  await page.route('**/api/courses/locate', r => r.fulfill({ status:200, contentType:'application/json',
+    body:JSON.stringify({ holes:[{ n:'1', points:[[100, 300], [250, 250]] }, { n:'2', points:[[300, 300], [400, 200], [500, 120]] }] }) }));
+  check(await page.isChecked('#a-find'), 'Claude marking the holes is on by default');
   await page.click('#sheetBody [data-act=next]');
   await page.waitForSelector('.dgaddbar:not([hidden])');
+  await page.waitForFunction(() => LF.dgadmin.state() && LF.dgadmin.state().holes.join() === '2,3', null, { timeout:10000 }).catch(() => {});
+  check(JSON.stringify((await page.evaluate(() => LF.dgadmin.state())).holes) === '[2,3]' && /Marked by Claude/.test(await page.textContent('.dgaddbar')), 'Claude\'s marks land on the picture: tee, bend, basket');
+  await page.unroute('**/api/courses/locate');
+  // Redo hole 1 by hand.
+  await page.click('.dgaddbar [data-a=redo]');
   check(await page.isVisible('img.dgpic') && /Hole 1 of 2 · Par 3 · 200 ft/.test(await page.textContent('.dgaddbar')), 'the picture lies over the map and asks for hole 1');
   await at(0.35, 0.52); await at(0.45, 0.5);
-  await page.click('.dgaddbar [data-a=next]');
-  await at(0.5, 0.52); await at(0.58, 0.48); await at(0.66, 0.45);
-  check(JSON.stringify((await page.evaluate(() => LF.dgadmin.state())).holes) === '[2,3]', 'taps mark tee, bend and basket');
-  await page.click('.dgaddbar [data-a=next]');
+  check(JSON.stringify((await page.evaluate(() => LF.dgadmin.state())).holes) === '[2,3]', 'Redo hole, then taps mark it again');
+  await page.click('.dgaddbar [data-a=done]');
   const al = await page.evaluate(() => LF.dgadmin.state());
   check(al.step === 'align' && (al.ft[0] - 200) * (al.ft[1] - 300) <= 0 && al.ft[0] > 100 && al.ft[1] < 600, 'Done sizes the picture from the listed distances: ' + al.ft.join(' / ') + ' ft');
   // Drag the picture 60 px right, then turn it a step.

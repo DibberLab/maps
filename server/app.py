@@ -630,6 +630,156 @@ def save_course():
     return jsonify(id=cid, course=c)
 
 
+# Reading a course's pars and distances from a screenshot (Add course > Read from a screenshot): the picture goes to
+# Claude, which returns the holes as JSON. Needs ANTHROPIC_API_KEY in /etc/linefence.env (never in this repo).
+TABLE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "found": {"type": "boolean", "description": "False when the picture shows no hole list with pars"},
+        "layout": {"type": "string", "description": "Layout or course name shown with the table, or empty"},
+        "holes": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"n": {"type": "string"}, "par": {"type": "integer"}, "ft": {"type": ["integer", "null"]}},
+            "required": ["n", "par", "ft"], "additionalProperties": False}},
+    },
+    "required": ["found", "layout", "holes"],
+    "additionalProperties": False,
+}
+TABLE_PROMPT = (
+    "This is a screenshot of a disc golf course's hole list (for example from UDisc): rows of hole numbers, distances "
+    "and pars, often split into several blocks of 9. List every hole in hole order with its number as shown, its par, "
+    "and its distance in feet (null if no distance is shown; convert metres to feet if the table is in metres). "
+    "Read the numbers exactly as printed; don't guess missing ones. Put the layout or course name in layout if one "
+    "is shown above the table. If the picture doesn't show a hole list, set found to false and holes to an empty list."
+)
+
+
+def ask_claude(data, media_type, prompt, schema):
+    """One picture and a question to Claude; the answer as JSON matching schema."""
+    import anthropic
+    # ANTHROPIC_API_KEY from the environment. One try, 45 s: inside nginx's 60 s and gunicorn's --timeout 60.
+    client = anthropic.Anthropic(timeout=45.0, max_retries=0)
+    resp = client.beta.messages.create(
+        model="claude-opus-5-5",
+        max_tokens=16000,
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+        output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema}},
+        messages=[{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}},
+            {"type": "text", "text": prompt},
+        ]}],
+    )
+    if resp.stop_reason == "refusal":
+        raise ValueError("Claude declined to read that picture.")
+    if resp.stop_reason == "max_tokens":
+        raise ValueError("That table was too long to read in one go.")
+    text = next((b.text for b in resp.content if b.type == "text"), "")
+    return json.loads(text)
+
+
+def _picture(b):
+    """(data, media_type) from a request body, or None."""
+    data, media_type = b.get("data"), b.get("media_type")
+    if not isinstance(data, str) or media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif") or not (100 < len(data) <= 7_000_000):
+        return None
+    return data, media_type
+
+
+def _claude(fn):
+    """Runs a Claude call and turns its failures into plain answers for the phone."""
+    import anthropic
+    try:
+        return fn(), None
+    except anthropic.AuthenticationError:
+        return None, err("The server's Claude API key was refused. Check the key.", 502)
+    except anthropic.RateLimitError:
+        return None, err("Claude is busy right now. Try again in a minute.", 503)
+    except anthropic.APITimeoutError:
+        return None, err("Claude took too long. Try again, or crop the picture.", 504)
+    except (anthropic.APIConnectionError, anthropic.InternalServerError):
+        return None, err("Couldn't reach Claude. Try again.", 502)
+    except anthropic.APIStatusError as e:
+        return None, err(f"Claude couldn't read it ({e.status_code}).", 502)
+    except ValueError as e:
+        return None, err(str(e) or "Claude's answer wasn't readable. Try again.", 502)
+
+
+@app.post("/api/courses/read")
+@needs("admin")
+def read_course_table():
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return err("Reading screenshots needs a Claude API key on the server. See the setup steps.", 503)
+    pic = _picture(body())
+    if not pic:
+        return err("Send the screenshot as a JPEG or PNG under 5 MB.")
+    got, bad = _claude(lambda: ask_claude(*pic, TABLE_PROMPT, TABLE_SCHEMA))
+    if bad:
+        return bad
+    holes = [{"n": str(h.get("n") or i + 1)[:6], "par": int(h["par"]), "ft": int(h["ft"]) if h.get("ft") else None}
+             for i, h in enumerate(got.get("holes") or []) if isinstance(h, dict) and _num(h.get("par"), 1, 9)][:54]
+    if not got.get("found") or not holes:
+        return err("Couldn't find a list of holes with pars in that picture.", 422)
+    return jsonify(holes=holes, layout=(got.get("layout") or "")[:80])
+
+
+# Finding the holes on a layout picture (Add course): where each hole's tee pad, bends and basket are, in the
+# picture's own pixels. The phone then lines the picture up with the aerial, so Claude never has to guess places.
+PT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}
+LAYOUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "found": {"type": "boolean"},
+        "holes": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"n": {"type": "string"}, "tee": PT, "bends": {"type": "array", "items": PT}, "basket": PT},
+            "required": ["n", "tee", "bends", "basket"], "additionalProperties": False}},
+    },
+    "required": ["found", "holes"],
+    "additionalProperties": False,
+}
+
+
+def layout_prompt(w, h, count):
+    return (
+        f"This is a disc golf course layout map (for example a UDisc screenshot), {w} by {h} pixels. Each hole is drawn as a "
+        "line from a tee pad (usually a small rectangle, often where the hole number sits near the start) to a basket "
+        "(a basket icon, often labelled Main, Long or Short). "
+        + (f"The course has {count} holes. " if count else "")
+        + "For every hole you can see, give its number and the pixel coordinates (x from the left edge, y from the top "
+        "edge, in this image's pixels) of the centre of its tee pad, of the basket icon's base, and of any points where "
+        "the hole's line bends, in order from tee to basket (an empty list if it's straight). When a hole has two "
+        "baskets or tees, use the one labelled Main. Leave out holes you can't find rather than guessing. Set found to "
+        "false if this isn't a course layout map."
+    )
+
+
+@app.post("/api/courses/locate")
+@needs("admin")
+def locate_course_holes():
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return err("Finding holes needs a Claude API key on the server. See the setup steps.", 503)
+    b = body()
+    pic, w, h = _picture(b), b.get("width"), b.get("height")
+    if not pic or not _num(w, 50, 4000) or not _num(h, 50, 4000):
+        return err("Send the layout picture as a JPEG or PNG under 5 MB, with its size.")
+    count = b.get("count") if _num(b.get("count"), 1, 54) else None
+    got, bad = _claude(lambda: ask_claude(*pic, layout_prompt(int(w), int(h), count and int(count)), LAYOUT_SCHEMA))
+    if bad:
+        return bad
+    inside = lambda p: isinstance(p, dict) and _num(p.get("x"), -5, w + 5) and _num(p.get("y"), -5, h + 5)
+    pt = lambda p: [round(min(max(p["x"], 0), w), 1), round(min(max(p["y"], 0), h), 1)]
+    holes = []
+    for x in (got.get("holes") or [])[:60]:
+        if not isinstance(x, dict) or not inside(x.get("tee")) or not inside(x.get("basket")):
+            continue
+        bends = [pt(p) for p in (x.get("bends") or [])[:20] if inside(p)]
+        holes.append({"n": str(x.get("n") or "")[:6], "points": [pt(x["tee"])] + bends + [pt(x["basket"])]})
+    if not got.get("found") or not holes:
+        return err("Couldn't find the holes in that picture. Mark them by tapping instead.", 422)
+    return jsonify(holes=holes)
+
+
 @app.delete("/api/courses/<cid>")
 @needs("admin")
 def delete_course(cid):

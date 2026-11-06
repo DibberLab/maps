@@ -65,11 +65,14 @@ function addStart(){
     `<form class="edit" onsubmit="return false">
       <p class="note">First move the map to the course (search its address). The picture stays on this phone; only the hole lines are published.</p>
       <label>Course name<input id="a-name" maxlength="80" placeholder="Tjader Acres"></label>
+      <div class="readbox"><label class="btn">Read pars &amp; distances from a screenshot<input type="file" id="a-table" accept="image/*" hidden></label>
+        <p class="small" id="a-read">A screenshot of the hole list (UDisc's Layout maps table works). Claude reads it and fills in the boxes below; check them.</p></div>
       <label>Pars, in hole order<textarea id="a-pars" rows="2" placeholder="3 3 3 4 3 4 3 3 3"></textarea></label>
       <label>Distances in feet, in hole order (optional)<textarea id="a-fts" rows="2" placeholder="251 238 382 508 288 406 228 316 205"></textarea></label>
       <label>Address (optional)<input id="a-addr" maxlength="120"></label>
       <label>Notes (optional)<textarea id="a-notes" rows="2" maxlength="1000"></textarea></label>
       <label class="btn">Choose the layout picture<input type="file" id="a-pic" accept="image/*" hidden></label> <span class="small" id="a-picname"></span>
+      <label class="check"><input type="checkbox" id="a-find" checked> Have Claude mark the tees and baskets on it (you check them)</label>
       <p class="small" id="a-count"></p>
       <div class="btnrow acts"><button type="button" class="btn primary" data-act="next">Next: mark the holes</button></div>
     </form>`,
@@ -82,7 +85,7 @@ function addStart(){
       if(fts.length && fts.length !== pars.length) return flash(`${pars.length} pars but ${fts.length} distances: they need to match`);
       if(!file) return flash('Choose the layout picture');
       const url = URL.createObjectURL(file), img = new Image();
-      img.onload = () => begin({ name, pars, fts, address:$('a-addr').value.trim(), notes:$('a-notes').value.trim(), url, w:img.naturalWidth, h:img.naturalHeight });
+      img.onload = () => begin({ name, pars, fts, address:$('a-addr').value.trim(), notes:$('a-notes').value.trim(), url, w:img.naturalWidth, h:img.naturalHeight }, $('a-find').checked && file);
       img.onerror = () => flash('That picture could not be opened');
       img.src = url;
     } });
@@ -90,7 +93,37 @@ function addStart(){
   const count = () => { const p = nums($('a-pars').value).length, f = nums($('a-fts').value).length;
     $('a-count').textContent = p ? `${p} holes, par ${nums($('a-pars').value).reduce((a, b) => a + Math.round(b), 0)}` + (f ? `, ${f} distances` : '') : ''; };
   $('a-pars').addEventListener('input', count); $('a-fts').addEventListener('input', count);
+  $('a-table').addEventListener('change', async () => {
+    const f = $('a-table').files[0]; if(!f) return;
+    const say = (t, bad) => { $('a-read').textContent = t; $('a-read').classList.toggle('bad', !!bad); };
+    say('Reading the table… (up to half a minute)');
+    try{
+      const res = await LF.api('POST', 'courses/read', await shrink(f));
+      $('a-pars').value = res.holes.map(h => h.par).join(' ');
+      $('a-fts').value = res.holes.every(h => h.ft) ? res.holes.map(h => h.ft).join(' ') : '';
+      count();
+      const par = res.holes.reduce((a, h) => a + h.par, 0), fts = res.holes.filter(h => h.ft).length;
+      say(`Read ${res.holes.length} holes, par ${par}${fts ? `, ${fts} distances` : ', no distances'}${res.layout ? ' (' + res.layout + ')' : ''}. Check them against the picture.`);
+    }catch(e){ say(e.message || 'Could not read that picture.', true); }
+    $('a-table').value = '';
+  });
   $('a-pic').addEventListener('change', () => { $('a-picname').textContent = $('a-pic').files[0] ? $('a-pic').files[0].name : ''; });
+}
+
+/* A screenshot as a JPEG at most `max` (2000) px on its long side (plenty to read, and a small upload). */
+function shrink(file, max){
+  return new Promise((ok, bad) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, (max || 2000) / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      ok({ media_type:'image/jpeg', data:c.toDataURL('image/jpeg', 0.9).split(',')[1], width:c.width, height:c.height, k:c.width / img.naturalWidth });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); bad(new Error('That picture could not be opened')); };
+    img.src = url;
+  });
 }
 
 /* ---------- The picture on the map ---------- */
@@ -133,13 +166,35 @@ function redraw(){
     L.marker(ll[0], { pane:'hiPane', interactive:false, keyboard:false, icon:L.divIcon({ className:'dg-tee', iconSize:[22, 16], iconAnchor:[11, 8], html:String(i + 1) }) }).addTo(marks);
   });
 }
-function begin(o){
+function begin(o, findFile){
   const sz = map.getSize();
-  A = Object.assign(o, { C:[map.getCenter().lat, map.getCenter().lng], rot:0, holes:o.pars.map(() => []), cur:0, step:'mark', opacity:.85, movePic:false });
+  A = Object.assign(o, { C:[map.getCenter().lat, map.getCenter().lng], rot:0, holes:o.pars.map(() => []), cur:0, step:'mark', opacity:.85, movePic:false, auto:new Set() });
   A.mpp = 0.8 * Math.min(sz.x, sz.y) / Math.max(A.w, A.h) / ppm();   // fills most of the screen to start
   LF.closeSheet(); LF.mode = 'dgadd';
   pic = new Pic().addTo(map); marks.addTo(map);
   bar.hidden = false; redraw(); show();
+  if(findFile) find(findFile);
+}
+/* Claude marks each hole on the picture (POST /api/courses/locate, in the picture's pixels; 1568 px is the size it
+   sees pictures at, so its numbers line up). Holes it can't find stay empty for tapping. */
+async function find(file){
+  const mine = A; A.finding = true; show();
+  try{
+    const p = await shrink(file, 1568);
+    const res = await LF.api('POST', 'courses/locate', { data:p.data, media_type:p.media_type, width:p.width, height:p.height, count:A.holes.length });
+    if(A !== mine) return;
+    let got = 0;
+    const free = () => A.holes.findIndex(h => !h.length);
+    res.holes.forEach(h => {
+      let i = parseInt(h.n, 10) - 1;
+      if(!(i >= 0 && i < A.holes.length) || A.holes[i].length) i = free();
+      if(i < 0) return;
+      A.holes[i] = h.points.map(q => [+(q[0] / p.k).toFixed(1), +(q[1] / p.k).toFixed(1)]); A.auto.add(i); got++;
+    });
+    A.cur = Math.max(0, A.holes.findIndex(h => !h.length));
+    flash(`Claude marked ${got} of ${A.holes.length} holes. Check them; Redo any that are off.`, 5000);
+  }catch(e){ if(A === mine) flash((e.message || 'Claude could not find the holes') + ' Tap them in instead.', 6000); }
+  if(A === mine){ A.finding = false; redraw(); show(); }
 }
 function stop(){
   if(!A) return;
@@ -208,18 +263,25 @@ const bar = document.createElement('div'); bar.className = 'coursebar dgaddbar';
 function show(){
   if(!A) return;
   const n = A.holes.length, pts = A.holes[A.cur], par = A.pars[A.cur], ft = A.fts[A.cur];
+  if(A.finding){
+    bar.innerHTML = `<div class="cb-head"><span><b>${esc(A.name)}</b></span><span class="small">Claude is finding the holes on the picture… (up to half a minute)</span></div>
+      <div class="cb-btns"><button class="btn" data-a="cancel">Cancel</button></div>`;
+    return;
+  }
   if(A.step === 'mark'){
-    const status = !pts.length ? 'Tap its tee pad on the picture' : pts.length === 1 ? 'Tap the basket (tap bends first if it bends)' : 'Basket = your last tap. Tap more to extend it';
+    const ready = A.holes.every(h => h.length > 1);
+    const status = A.auto.has(A.cur) && pts.length > 1 ? 'Marked by Claude. If it’s off, tap Redo hole and tap the tee, bends and basket' : !pts.length ? 'Tap its tee pad on the picture' : pts.length === 1 ? 'Tap the basket (tap bends first if it bends)' : 'Basket = your last tap. Tap more to extend it';
     bar.innerHTML = `<div class="cb-head"><span><b>${esc(A.name)}</b> · Hole ${A.cur + 1} of ${n} · Par ${par}${ft ? ' · ' + ft + ' ft' : ''}</span><span class="small">${status}</span></div>
       <div class="cb-btns"><button class="btn primary" data-a="next"${pts.length > 1 ? '' : ' disabled'}>${A.cur < n - 1 ? `Hole ${A.cur + 2} ›` : 'Done: line it up'}</button>
-        <button class="btn" data-a="undo"${pts.length ? '' : ' disabled'}>Undo</button><button class="btn" data-a="prev"${A.cur ? '' : ' disabled'}>‹ Hole ${A.cur || ''}</button>
+        ${ready && A.cur < n - 1 ? '<button class="btn" data-a="done">All good: line it up</button>' : ''}
+        <button class="btn" data-a="undo"${pts.length ? '' : ' disabled'}>Undo</button>${pts.length > 1 ? '<button class="btn" data-a="redo">Redo hole</button>' : ''}<button class="btn" data-a="prev"${A.cur ? '' : ' disabled'}>‹ Hole ${A.cur || ''}</button>
         <button class="btn" data-a="fade">See-through</button><button class="btn" data-a="cancel">Cancel</button></div>`;
   } else {
     const marked = A.holes.reduce((a, p) => a + ftOf(p), 0), listed = A.fts.reduce((a, b) => a + b, 0);
     bar.innerHTML = `<div class="cb-head"><span><b>Line the picture up with the aerial</b></span><span class="small">` +
       (listed ? `Holes ${Math.round(marked).toLocaleString('en-US')} ft · listed ${listed.toLocaleString('en-US')} ft (${marked >= listed ? '+' : '−'}${Math.abs(Math.round((marked / listed - 1) * 100))}%)` : `Holes ${Math.round(marked).toLocaleString('en-US')} ft`) +
       ` · ${A.movePic ? 'Drag to move, two fingers to turn and size' : 'Moving the map'}</span></div>
-      <div class="cb-btns"><button class="btn primary" data-a="publish">Publish course</button>
+      <div class="cb-btns"><button class="btn primary" data-a="publish">Apply: publish the course</button>
         <button class="btn${A.movePic ? ' on' : ''}" data-a="mode">${A.movePic ? 'Moving picture ✓' : 'Move picture'}</button>
         <button class="btn" data-a="rotl" aria-label="Turn left">⟲</button><button class="btn" data-a="rotr" aria-label="Turn right">⟳</button>
         <button class="btn" data-a="smaller" aria-label="Smaller">−</button><button class="btn" data-a="bigger" aria-label="Bigger">+</button>
@@ -232,11 +294,13 @@ bar.addEventListener('click', async e => {
   const a = b.dataset.a, pts = A.holes[A.cur];
   if(a === 'cancel'){ if(confirm('Stop adding this course? Nothing is published.')) stop(); return; }
   if(a === 'undo') pts.pop();
+  if(a === 'redo'){ A.holes[A.cur] = []; A.auto.delete(A.cur); }
+  if(a === 'done') A.cur = A.holes.length - 1;   // then on as Next from the last hole
   if(a === 'prev') A.cur = Math.max(0, A.cur - 1);
-  if(a === 'next'){
+  if(a === 'next' || a === 'done'){
     if(A.cur < A.holes.length - 1) A.cur++;
     else { const missing = A.holes.findIndex(p => p.length < 2); if(missing >= 0){ A.cur = missing; flash(`Hole ${missing + 1} isn't marked yet`); }
-      else { fitSize(); A.step = 'align'; A.opacity = .55; movePicture(true); flash('Sized from the distances. Now drag and turn it to match the aerial.', 4000); } }
+      else { fitSize(); A.step = 'align'; A.opacity = .45; movePicture(true); flash('Sized from the distances. Now drag and turn it to match the aerial, then Apply.', 4000); } }
   }
   if(a === 'fade') A.opacity = A.opacity > .7 ? .55 : A.opacity > .4 ? .3 : .9;
   if(a === 'mode') movePicture(!A.movePic);

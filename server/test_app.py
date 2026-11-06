@@ -99,6 +99,27 @@ check(len(pub) == 1 and pub[0]["name"] == "Tjader Acres" and pub[0]["holes"][1][
 check(abs(pub[0]["c"][0] - 45.778) < 0.001, "the course pin is the middle of its holes")
 J(admin, "post", "/api/courses", {"id": cr["id"], "course": dict(course, name="Tjader Acres DGC")})
 check(stranger.get("/api/courses").json["courses"][0]["name"] == "Tjader Acres DGC", "an admin updates a course in place")
+# Reading pars from a screenshot: admins only, needs the server's key; the Claude call itself is stubbed here.
+pic = {"data": "A" * 200, "media_type": "image/png"}
+check(J(user, "post", "/api/courses/read", pic).status_code == 403, "only admins read course screenshots")
+os.environ.pop("ANTHROPIC_API_KEY", None)
+check(J(admin, "post", "/api/courses/read", pic).status_code == 503, "without a Claude key the server says so")
+os.environ["ANTHROPIC_API_KEY"] = "test-key"
+srv.ask_claude = lambda d, m, p, sc: {"found": True, "layout": "27 Hole", "holes": [{"n": "1", "par": 3, "ft": 251}, {"n": "2", "par": 4, "ft": None}]}
+rd = J(admin, "post", "/api/courses/read", pic)
+check(rd.status_code == 200 and rd.json["holes"] == [{"n": "1", "par": 3, "ft": 251}, {"n": "2", "par": 4, "ft": None}] and rd.json["layout"] == "27 Hole", "a screenshot's pars and distances come back as holes")
+srv.ask_claude = lambda d, m, p, sc: {"found": False, "layout": "", "holes": []}
+check(J(admin, "post", "/api/courses/read", pic).status_code == 422, "a picture with no hole list says so")
+check(J(admin, "post", "/api/courses/read", {"data": "x", "media_type": "text/html"}).status_code == 400, "only images are sent")
+srv.ask_claude = lambda d, m, p, sc: {"found": True, "holes": [
+    {"n": "1", "tee": {"x": 70, "y": 975}, "bends": [], "basket": {"x": 213, "y": 925}},
+    {"n": "4", "tee": {"x": 253, "y": 986}, "bends": [{"x": 335, "y": 1040}], "basket": {"x": 513, "y": 1003}},
+    {"n": "9", "tee": {"x": 9999, "y": 5}, "bends": [], "basket": {"x": 1, "y": 1}}]}
+lc = J(admin, "post", "/api/courses/locate", dict(pic, width=1145, height=1129, count=27))
+check(lc.status_code == 200 and lc.json["holes"] == [{"n": "1", "points": [[70, 975], [213, 925]]}, {"n": "4", "points": [[253, 986], [335, 1040], [513, 1003]]}],
+      "a layout picture's holes come back as tee, bends and basket in picture pixels (off-picture ones dropped)")
+check(J(user, "post", "/api/courses/locate", dict(pic, width=10, height=10)).status_code == 403, "only admins find holes")
+os.environ.pop("ANTHROPIC_API_KEY", None)
 check(J(admin, "delete", f"/api/courses/{cr['id']}", {}).status_code == 200 and stranger.get("/api/courses").json["courses"] == [], "an admin deletes a course")
 # Short links: anyone can make one; the same link gets the same code; following it redirects to the full view.
 h = "#map=17/45.80050/-92.40050&base=hyb&layers=parcels&share=AbCdEfGh1234"

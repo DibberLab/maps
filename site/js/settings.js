@@ -14,7 +14,7 @@ let timer = null, applying = false, loadedFor = null;
 function current(){
   const layers = {};
   boxes().forEach(b => { layers[b.id] = b.checked; });
-  return { v:1, base:LF.getBase(), closeup:LF.getCloseup(), layers };
+  return { v:1, base:LF.getBase(), closeup:LF.getCloseup(), layers, photoShift:LF.photoShift ? LF.photoShift.get() : undefined };
 }
 function apply(s){
   if(!s || typeof s !== 'object') return;
@@ -25,6 +25,7 @@ function apply(s){
       const r = panel.querySelector(`input[name=closeup][value="${s.closeup}"]`);
       if(r){ r.checked = true; r.dispatchEvent(new Event('change', { bubbles:true })); }
     }
+    if(Array.isArray(s.photoShift) && LF.photoShift) LF.photoShift.set(s.photoShift);
     Object.entries(s.layers || {}).forEach(([id, want]) => {
       const b = document.getElementById(id);
       if(b && b.type === 'checkbox' && b.checked !== !!want){ b.checked = !!want; b.dispatchEvent(new Event('change', { bubbles:true })); }
@@ -38,6 +39,7 @@ async function save(){
 }
 function schedule(){ if(applying) return; clearTimeout(timer); timer = setTimeout(save, 1500); }
 panel.addEventListener('change', schedule);
+LF.listen('photoShift', schedule);   // the aerial photo lined up (photoshift.js) follows the account too
 
 /* On sign-in (or opening the app signed in): the account's settings win; a new account starts from this device's.
    Opening a shared link that sets its own base map or layers keeps the link's choice for that visit. */

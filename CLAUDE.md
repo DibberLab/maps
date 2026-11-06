@@ -120,6 +120,11 @@ site/                 the whole app: static files, no build step
                       changes; listed distances and pin kept). The layer draws no hole lines for courses in your own map (isMine),
                       and Edit course on one moves just its pin. sameCourse(): names equal or one extends the other once
                       "(…)" and words like "disc golf", "course" are dropped, within 3 km, so a course shows once.
+  js/photoshift.js    Menu > Line up the aerial photo: averaged GPS on open ground → tap that spot on the photo → the photos shift
+                      (Leaflet tilePane CSS translate, metres east/north → px per zoom; ↑↓←→ 1 ft). One shift per area
+                      { at, e, n } used within 30 km; pref 'photoShift', also in account settings (settings.js). Then "Move what
+                      you placed by eye": items in chosen top folders (Disc Golf ticked) and, for admins, public courses nearby
+                      (pins and holes) move by the same change. Parcel lines and other data never move.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

@@ -697,6 +697,40 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   const moved = await page.evaluate(n => LF.discgolf.data().courses.find(x => x.name === n), osm.name);
   check(moved && moved.pinOnly && moved.c[0] < osm.c[0] && moved.holes.length === osm.n, 'its pin moves and it keeps its own holes: ' + osm.name);
 
+  // 22. Line up the aerial photo: measure with GPS, tap the spot on the photo, nudge, then move what was placed by eye.
+  await page.evaluate(() => { LF.closeSheet(); if(document.querySelector('.dgaddbar:not([hidden]) [data-e=cancel]')) document.querySelector('.dgaddbar [data-e=cancel]').click(); });
+  await ctx.setGeolocation({ latitude:45.86, longitude:-92.62, accuracy:3 });
+  const hole1Before = await page.evaluate(() => LF.db.all('tracks').then(t => t.find(x => x.folder === 'Disc Golf / Test Park' && x.dg && x.dg.hole === '1').points[0]));
+  const pubBefore = await page.evaluate(() => LF.api('GET', 'courses').then(r => r.courses.find(c => c.name === 'Pine Test')));
+  await page.click('#menuBtn'); await page.click('.mi[data-m=photo]');
+  await page.waitForSelector('.photobar:not([hidden]) [data-p=here]'); await page.click('.photobar [data-p=here]');
+  for(let i = 0; i < 4; i++){ await ctx.setGeolocation({ latitude:45.86 + i * 0.000002, longitude:-92.62, accuracy:3 }); await page.waitForTimeout(350); }
+  await page.click('.photobar [data-p=use]');
+  await page.waitForSelector('.photobar [data-p=again]');
+  const gpsPt = await page.evaluate(() => { const p = LF.map.latLngToContainerPoint([45.860003, -92.62]); return { x:p.x, y:p.y }; });
+  await page.mouse.click(gpsPt.x + 40, gpsPt.y);   // the spot shows 40 px east on the photo
+  await page.waitForSelector('.photobar [data-p=done]');
+  const sh1 = await page.evaluate(() => LF.photoShift.get());
+  check(sh1.length === 1 && sh1[0].e < -1 && Math.abs(sh1[0].n) < 0.5 && await page.evaluate(() => /translate/.test(document.querySelector('.leaflet-tile-pane').style.transform)), 'tapping the spot shifts the photo to the GPS: ' + JSON.stringify(sh1));
+  await page.click('.photobar [data-p=nudge][data-d=n]');
+  const sh2 = await page.evaluate(() => LF.photoShift.get()[0]);
+  check(Math.abs(sh2.n - sh1[0].n - 0.3048) < 0.01, 'the arrows move it a foot at a time');
+  await page.click('.photobar [data-p=done]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Move what you placed by eye")');
+  check(await page.isChecked('#sheetBody [data-top="Disc Golf"]') && await page.isChecked('#sheetBody [data-pub]'), 'Disc Golf and the public courses here are ticked to move along');
+  await page.click('#sheetBody [data-act=move]');
+  await page.waitForFunction(() => document.getElementById('sheet').hidden, null, { timeout:10000 }).catch(() => {});
+  const hole1After = await page.evaluate(() => LF.db.all('tracks').then(t => t.find(x => x.folder === 'Disc Golf / Test Park' && x.dg && x.dg.hole === '1').points[0]));
+  const pubAfter = await page.evaluate(() => LF.api('GET', 'courses').then(r => r.courses.find(c => c.name === 'Pine Test')));
+  const eM = (a, b) => (b[1] - a[1]) * 111320 * Math.cos(a[0] * Math.PI / 180), nM = (a, b) => (b[0] - a[0]) * 111320;
+  check(Math.abs(eM(hole1Before, hole1After) - sh2.e) < 0.05 && Math.abs(nM(hole1Before, hole1After) - sh2.n) < 0.05, 'my disc golf holes move with the photo');
+  check(Math.abs(eM(pubBefore.holes[0].line[0], pubAfter.holes[0].line[0]) - sh2.e) < 0.05 && Math.abs(eM(pubBefore.c, pubAfter.c) - sh2.e) < 0.05, 'and the public course near here, pin too');
+  await page.waitForTimeout(2000);   // settings reach the account 1.5 s after a change
+  await page.reload({ waitUntil:'domcontentloaded' }); await page.waitForFunction(() => window.LF && LF.photoShift);
+  await page.waitForTimeout(1500);
+  const rl = await page.evaluate(() => ({ n:LF.photoShift.get().length, t:document.querySelector('.leaflet-tile-pane').style.transform, c:LF.map.getCenter(), raw:localStorage.getItem('lf.photoShift') }));
+  check(rl.n === 1 && /translate/.test(rl.t), 'the shift is kept after a reload: ' + JSON.stringify(rl));
+
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));

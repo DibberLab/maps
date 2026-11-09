@@ -19,6 +19,12 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   const ctx = await browser.newContext({ ...devices['Pixel 7'], acceptDownloads: true,
     geolocation: { ...START, accuracy: 8 }, permissions: ['geolocation'] });
   const page = await ctx.newPage();
+  // Weather (Open-Meteo) answers from a fixture all run: the real service rate-limits test machines.
+  await ctx.route('**/api.open-meteo.com/**', r => r.fulfill({ status:200, contentType:'application/json', headers:{ 'access-control-allow-origin':'*' }, body:JSON.stringify({
+    current:{ temperature_2m:61, apparent_temperature:61, wind_speed_10m:10, wind_direction_10m:270, wind_gusts_10m:18, weather_code:1, precipitation:0 },
+    hourly:{ time:['2026-11-09T12:00', '2026-11-09T13:00', '2026-11-09T14:00', '2026-11-09T15:00', '2026-11-09T16:00', '2026-11-09T17:00', '2026-11-09T18:00'],
+      temperature_2m:[61, 62, 63, 63, 62, 60, 58], precipitation_probability:[0, 0, 10, 20, 20, 10, 0], wind_speed_10m:[10, 11, 12, 12, 10, 8, 6],
+      wind_direction_10m:[270, 270, 280, 280, 290, 290, 300], weather_code:[1, 1, 2, 2, 3, 3, 3] } }) }));
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if(m.type() === 'error') errors.push('console: ' + m.text()); });
@@ -786,7 +792,7 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("My bag")');
   const bag = await page.textContent('#sheetBody');
   check(/Distance Drivers[\s\S]*Destroyer[\s\S]*12 · 5 · -1 · 3[\s\S]*328 ft/.test(bag), 'the bag lists it by type with flight numbers and its best throw');
-  await page.unroute('**/api.open-meteo.com/**');
+  // (Open-Meteo stays answered from the fixture for the rest of the run: it rate-limits test machines.)
 
   // 24. Solo and team rounds, and stats with teammates and against opponents.
   const playRound = async (setup, scoreAct) => {
@@ -843,6 +849,15 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.click('#sheetBody [data-act=go]');
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1")');
   check(/hole 1 of 13/.test(await page.textContent('#sheetHead')), 'an unmapped course can be 13 holes');
+
+  // 26. Remove course (admins) takes a published course off the list for everyone.
+  await page.evaluate(() => LF.closeSheet());
+  await page.evaluate(id => LF.discgolf.openPublic(id), pubd.id);
+  await page.waitForSelector('#sheetBody [data-act=unpublish]');
+  page.once('dialog', d => d.accept());
+  await page.click('#sheetBody [data-act=unpublish]');
+  await page.waitForFunction(id => LF.api('GET', 'courses').then(r => !r.courses.some(c => c.id === id)), pubd.id, { timeout:10000 }).catch(() => {});
+  check(await page.evaluate(id => LF.api('GET', 'courses').then(r => !r.courses.some(c => c.id === id)), pubd.id), 'Remove course takes it off the public list');
 
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));

@@ -12,6 +12,7 @@ let user = LF.prefs.get('account', null);    // last known, so the app knows who
 let checked = false;
 
 async function api(method, path, data){
+  if(data === undefined && method !== 'GET') data = {};   // the server takes changes only as JSON (its guard against other sites' forms)
   const res = await fetch('/api/' + path, { method, credentials:'same-origin',
     headers: data !== undefined ? { 'Content-Type':'application/json' } : {}, body: data !== undefined ? JSON.stringify(data) : undefined });
   let j = {}; try{ j = await res.json(); }catch(e){}

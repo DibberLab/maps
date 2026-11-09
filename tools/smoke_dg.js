@@ -13,6 +13,9 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ ...devices['Pixel 7'], geolocation:{ latitude:45.7778, longitude:-92.4310, accuracy:5 }, permissions:['geolocation'] });
   const page = await ctx.newPage();
+  await ctx.route('**/api.open-meteo.com/**', r => r.fulfill({ status:200, contentType:'application/json', headers:{ 'access-control-allow-origin':'*' }, body:JSON.stringify({
+    current:{ temperature_2m:61, apparent_temperature:61, wind_speed_10m:10, wind_direction_10m:270, wind_gusts_10m:18, weather_code:1, precipitation:0 },
+    hourly:{ time:['2026-11-09T12:00', '2026-11-09T13:00'], temperature_2m:[61, 62], precipitation_probability:[0, 0], wind_speed_10m:[10, 11], wind_direction_10m:[270, 270], weather_code:[1, 1] } }) }));   // the real one rate-limits test machines
   const errors = [], parcelCalls = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if(m.type() === 'error') errors.push('console: ' + m.text()); });

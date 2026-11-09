@@ -71,10 +71,11 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   const manifest = await page.evaluate(() => fetch('manifest.json').then(r => r.json()));
   check(manifest.display === 'standalone' && manifest.icons.length >= 3, 'manifest is installable');
   await page.evaluate(() => navigator.serviceWorker.ready);
-  await page.reload(); await page.waitForTimeout(500);
+  // (Reloads wait for the app, not for every map image: outside tile servers can be slow.)
+  await page.reload({ waitUntil:'domcontentloaded' }); await page.waitForFunction(() => window.LF && LF.map); await page.waitForTimeout(500);
   check(await page.evaluate(() => !!navigator.serviceWorker.controller), 'service worker controls the page');
   await ctx.setOffline(true);
-  await page.reload();
+  await page.reload({ waitUntil:'domcontentloaded' }); await page.waitForFunction(() => window.LF && LF.map, null, { timeout:15000 }).catch(() => {});
   check(await page.evaluate(() => !!(window.LF && LF.map && document.querySelector('.brand'))), 'app opens with no network');
   await ctx.setOffline(false);
 
@@ -151,7 +152,8 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await desk.screenshot({ path: path.join(OUT, 'smoke-desktop.png') });
 
   // USGS's label servers (city and lake names) often refuse requests for a while; labels.js just skips them.
-  const real = errors.filter(e => !/net::ERR_INTERNET_DISCONNECTED|Failed to fetch|ERR_FAILED/.test(e) && !/(carto|hydro)\.nationalmap\.gov/.test(e));
+  // A map picture an outside server refuses (it answers an error page without CORS) is that server's hiccup, not a script error.
+  const real = errors.filter(e => !/net::ERR_INTERNET_DISCONNECTED|Failed to fetch|ERR_FAILED|Access to image at/.test(e) && !/(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));
   await browser.close();
   console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

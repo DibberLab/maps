@@ -4,6 +4,20 @@ Free, phone-friendly map of property lines, owners and public land for Wisconsin
 
 The map itself needs no server, build step or API key: the browser pulls all map data straight from state and federal ArcGIS services. Accounts and sync use a small API (`server/app.py`, Flask + SQLite) behind nginx at `/api/` on the same origin. Settings (base map, layers on or off, last view) are saved per browser in `localStorage` under `lf.*` keys.
 
+## Two apps, one codebase
+
+The same `site/` and API also serve a **disc golf app** at a discjerkers.com subdomain (name not settled yet; working
+name "Disc Golf"). `site/js/flavor.js` (loaded first) picks the face from the address: `*.discjerkers.com` → disc golf
+(`LF.isDG`, `LF.APP`), anything else → Line Fence; on test servers `?app=dg` / `?app=lf` (remembered). The disc golf face
+renames the page (title, brand, manifest-dg.json, icons/dg-*), starts with courses, campgrounds, trout water and public
+land on and property lines off (`APP.layers`, merged into map.js defaults), puts the disc golf tools ("Play") and the
+Recreation/Fishing layers first, adds a Courses near me button (#nearBtn, js/dgnear.js), and skips owner lookups on a map
+tap while Property lines is off. Same accounts, so courses, rounds and throws are in both; settings.js keeps the disc
+golf app's layer choices under `settings.dg` (Line Fence's stay top level; photoShift is shared). The app's name is
+`DG.name`/`DG.brand` in flavor.js plus manifest-dg.json. Hosting: deploy/discgolf.nginx.conf (SUBDOMAIN filled in by
+deploy/setup-discgolf-from-mac.sh <subdomain>, run once on the Mac; same *.discjerkers.com origin cert as discform),
+serving /var/www/maps/site, /api/ to the same linefence-api. Deploys of main update both. Tests: tools/smoke_dg.js.
+
 ## Working rules
 
 - **Pushing to `main` deploys to production** (GitHub Actions → `/usr/local/bin/maps-deploy` on the droplet, about 15 s).
@@ -125,6 +139,9 @@ site/                 the whole app: static files, no build step
                       { at, e, n } used within 30 km; pref 'photoShift', also in account settings (settings.js). Then "Move what
                       you placed by eye": items in chosen top folders (Disc Golf ticked) and, for admins, public courses nearby
                       (pins and holes) move by the same change. Parcel lines and other data never move.
+  js/flavor.js        which app this is (Line Fence or the disc golf app) and dressing the page for it; see "Two apps".
+  js/dgnear.js        Courses near me: every course on the disc golf layer, nearest first from GPS (map centre until it
+                      answers), search by name across all; a tap opens the course (LF.discgolf.showCourse).
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload
@@ -233,6 +250,8 @@ All URLs are in the `SRC` block near the top of the app script. If an agency mov
 | `wiRoadsCar`, `wiRoadsAtvSnow`, `wiRoadsAtv`, `wiRoadsSnow` | WI DNR `DW_Map_Dynamic/EN_DNR_Motorized_Access_Roads_Ext` layers 1–4 | Car roads → `mnroads` (dashed = open seasonally, `DATE_OPEN_FROM/TO` MMDD); ATV/snowmobile → `mnmotor`, merged per `ROAD_SEQ_NO` on tap |
 | `wiBoat` | WI DNR `arcgis2/PR_Recreation/PR_Boat_Access_Shore_Fishing_WTM_Ext` layer 2 | Toggle `mnaccess`, `ABANDON_FLAG = 'No'` (`LF.REC_WHERE`). Layer 1 = shore fishing sites (not used) |
 
+| `usfsCamps` | USFS `EDW/EDW_RecreationOpportunities_01` layer 0 (apps.fs.usda.gov) | Toggle `camp`. `markeractivity LIKE '%Camp%'` in the Chequamegon-Nicolet, Superior and Chippewa NFs (`LF.REC_WHERE`) |
+| `mnForestCamps`, `mnParkCamps` | MN DNR `struc_state_forest_campgrounds` (1; day-use areas left out), `struc_parks_and_trails_campsites` (0, one point per site, zoom 14+) | Toggle `camp`. Tent badges (`campIcon`); WI state park and private/county campgrounds aren't in these (OpenStreetMap would cover them) |
 | `mnTroutStreams`, `mnTroutLakes` | MN DNR `env_trout_stream_designations` (0), `env_trout_lake_designation` (layer 2, `trout_lake`='Y') | Toggle `trout`. Both `trout_flag` values (1, 2) are designated streams; meaning undocumented, not shown |
 | `wiTroutStreams`, `wiTroutLakes` | WI DNR `FM_Trout/FM_TROUT_REGS_WTM_Ext` layers 0, 1 | Toggle `trout`. `SEASON_TXT`, `EARLY_SEASON_TXT`, `BAG_LMT`, gear ("N/A" hidden) |
 
@@ -274,7 +293,7 @@ Needed for any future CSP or firewall allowlist:
 connect-src / img-src:
   services3.arcgis.com  services5.arcgis.com  services.arcgis.com  static.arcgis.com
   enterprise.gisdata.mn.gov  dnrmaps.wi.gov  basemap.nationalmap.gov
-  imageserver.gisdata.mn.gov  elevation.nationalmap.gov  imagery.nationalmap.gov
+  imageserver.gisdata.mn.gov  elevation.nationalmap.gov  imagery.nationalmap.gov  apps.fs.usda.gov
   tile.openstreetmap.org  nominatim.openstreetmap.org
 style-src: fonts.googleapis.com   font-src: fonts.gstatic.com
 script-src: 'self' (no inline scripts, no JSONP since Phase 1)

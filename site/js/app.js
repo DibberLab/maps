@@ -141,6 +141,7 @@ tPanel.addEventListener('click', e => {
   else if(t === 'dgscore') LF.rounds.start();
   else if(t === 'dgthrow') LF.throws.start();
   else if(t === 'dgthrows') LF.throws.list();
+  else if(t === 'dgnear') LF.courses.near();
   else if(t === 'offline-save') LF.offline.save();
   else if(t === 'offline-list') LF.offline.list();
   else LF.draw.start(t);

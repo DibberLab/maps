@@ -4,3 +4,4 @@ node_modules/
 smoke-*.png
 smoke-backup.json
 .venv
+tools/data/

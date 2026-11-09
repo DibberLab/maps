@@ -56,9 +56,13 @@ const inMN = ll => ll.lat>43.4 && ll.lat<49.5 && ll.lng>-97.3 && ll.lng<-89.4;
 /* ---------- MN DNR trails, forest roads and water accesses near the tap ----------
    Only the layers that are switched on are asked, within about 14 screen pixels (more for access dots). */
 const REC_LAYERS = { mntrails:['mnStateTrails', 'mnHunterTrails', 'wiStateTrails', 'wiIceAge', 'wiNct'], mnmotor:['mnOhv', 'mnSnowmobile', 'wiRoadsAtvSnow', 'wiRoadsAtv', 'wiRoadsSnow'],
-  mnroads:['mnForestRoads', 'wiRoadsCar'], mnaccess:['mnAccess', 'wiBoat'], trout:['mnTroutStreams', 'mnTroutLakes', 'wiTroutStreams', 'wiTroutLakes'] };
-const REC_MINZ = { trout:8 };
+  mnroads:['mnForestRoads', 'wiRoadsCar'], mnaccess:['mnAccess', 'wiBoat'], trout:['mnTroutStreams', 'mnTroutLakes', 'wiTroutStreams', 'wiTroutLakes'],
+  camp:['usfsCamps', 'mnForestCamps', 'mnParkCamps'] };
+const REC_MINZ = { trout:8, camp:8 };
 const REC_FIELDS = {
+  usfsCamps:['recareaname','markeractivity','forestname','recareaurl','open_season_start','open_season_end','feedescription','reservation_info','openstatus'],
+  mnForestCamps:['facility_name','site_type','state_forest','county'],
+  mnParkCamps:['campground_name','camping_unit_name','campsite_type_name','containing_mgmt_unit_name','amps_30_flag','amps_50_flag','pull_through_back_in_flag','distance_to_shower','hike_in_distance'],
   mnStateTrails:['trail_name','alt_name','use_hike','use_hiking','use_horse','use_bike','use_mntbik','use_inline','use_wntrhi','use_snosho','use_atvcl1','use_atvcl2','use_ohm','use_orv','use_wcftm','use_wcftnm','surfacetyp','width'],
   mnHunterTrails:['trail_name','unit_name','area_name','lmiles','phone','comments'],
   mnOhv:['trail_name','segment_name','surface_type','trail_width','atv_class_1','atv_class_2','off_highway_motorcycle','off_road_vehicle','road_class','miles','web_site'],
@@ -75,16 +79,16 @@ const REC_FIELDS = {
   wiTroutLakes:['WATERBODY_','SEASON_TXT','EARLY_SEASON_TXT','BAG_LMT','REGCAT','GEAR_RESTR'],
   wiBoat:['LMS_BOAT_LANDING_NAME','WATERBODY_NAME_TEXT','LANDING_TYPE_CODE','RAMP_TYPE_CODE','ADA_ACCESSIBLE_FEATURE_CODE','OWNERSHIP_NAME_TEXT','OWNERSHIP_MANAGER_NAME_TEXT','OWNERSHIP_MANAGER_PHONE_TEXT','COUNTY_NAME_TEXT']
 };
-const REC_STATE = k => k.slice(0, 2);   // 'mn…' or 'wi…'
+const REC_STATE = k => k.slice(0, 2);   // 'mn…' or 'wi…' ('us…': both states)
 const mmdd = v => { const m = /^(\d\d)(\d\d)$/.exec(String(v || '')); return m ? new Date(2000, +m[1] - 1, +m[2]).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : null; };
 function recLookup(ll){
   const mpp = 156543.03 * Math.cos(ll.lat * Math.PI / 180) / Math.pow(2, map.getZoom());
   const states = (inMN(ll) ? ['mn'] : []).concat(inWI(ll) ? ['wi'] : []);
-  const keys = Object.entries(REC_LAYERS).filter(([k]) => on[k] && map.getZoom() >= (REC_MINZ[k] || 10)).flatMap(([, v]) => v).filter(k => states.includes(REC_STATE(k)));
+  const keys = Object.entries(REC_LAYERS).filter(([k]) => on[k] && map.getZoom() >= (REC_MINZ[k] || 10)).flatMap(([, v]) => v).filter(k => states.includes(REC_STATE(k)) || REC_STATE(k) === 'us');
   if(!keys.length) return null;
   // A finger is wide: lines answer within ~22 px, dots within ~24 px (never less than 15 m).
   return Promise.all(keys.map(key => query(SRC[key], ll, REC_FIELDS[key], { where:LF.REC_WHERE[key], geometry:true, fullDetail:/Trout/.test(key),
-      nearby:Math.min(500, Math.max(15, mpp * (/Access|Boat/.test(key) ? LF.REC_TAP.dot : LF.REC_TAP.line))) })
+      nearby:Math.min(500, Math.max(15, mpp * (/Access|Boat|Camps/.test(key) ? LF.REC_TAP.dot : LF.REC_TAP.line))) })
     .then(q => ({ err:q.err, results:q.features.slice(0, 3).map(f => ({ key, p:f.properties, f, d:distTo(ll, f) })) }))))
     .then(all => ({ err:all.every(a => a.err), results:[].concat(...all.map(a => a.results)).sort((a, b) => a.d - b.d) }));
 }
@@ -164,6 +168,18 @@ function recBlock(x){
     rowsOut = [['Season', p.SEASON_TXT], ['Early season', na(p.EARLY_SEASON_TXT)], ['Bag limit', p.BAG_LMT || p.REGCAT],
       ['Gear', na(p.GEAR_RESTRICTIONS || p.GEAR_RESTR)], ['Special', na(p.SPECIALREG1)]];
     link = '<a href="https://dnr.wisconsin.gov/topic/Fishing/trout" target="_blank" rel="noopener">Trout fishing &amp; regulations (WI DNR)</a>';
+  } else if(x.key === 'usfsCamps'){
+    name = p.recareaname; rowsOut = [['Type', p.markeractivity], ['Forest', p.forestname], ['Season', [p.open_season_start, p.open_season_end].filter(Boolean).join(' to ')],
+      ['Fees', p.feedescription], ['Reservations', p.reservation_info], ['Status', p.openstatus]];
+    if(/^https?:/i.test(p.recareaurl || '')) link = `<a href="${esc(p.recareaurl)}" target="_blank" rel="noopener">Campground page (Forest Service)</a>`;
+  } else if(x.key === 'mnForestCamps'){
+    name = p.facility_name; rowsOut = [['Type', p.site_type], ['State forest', p.state_forest], ['County', p.county]];
+    link = '<a href="https://www.dnr.state.mn.us/state_forests/camping.html" target="_blank" rel="noopener">State forest camping (MN DNR)</a>';
+  } else if(x.key === 'mnParkCamps'){
+    name = [p.containing_mgmt_unit_name, p.campground_name].filter(Boolean).join(' · ');
+    rowsOut = [['Site', [p.camping_unit_name, p.campsite_type_name].filter(Boolean).join(' · ')], ['Electric', yes(p.amps_50_flag) ? '50 amp' : yes(p.amps_30_flag) ? '30 amp' : null],
+      ['Pull-through', yes(p.pull_through_back_in_flag) ? 'Yes' : null], ['Hike in', p.hike_in_distance], ['To showers', p.distance_to_shower]];
+    link = '<a href="https://www.dnr.state.mn.us/state_parks/reservations.html" target="_blank" rel="noopener">Reserve (MN state parks)</a>';
   } else if(x.key === 'mnAccess'){
     name = p.access_name || 'Water access'; rowsOut = [['Water', p.lake_name], ['Launch', p.launch_type], ['Ramp', /unknown/i.test(p.ramp_surface || '') ? null : [p.number_of_ramps > 0 ? p.number_of_ramps + '×' : '', p.ramp_surface].filter(Boolean).join(' ')],
       ['Docks', p.number_of_docks], ['Trailer parking', p.trailer_parking_spaces_non_ada], ['Car parking', p.car_parking_spaces_non_ada], ['Toilets', p.number_of_toilets],
@@ -271,14 +287,16 @@ async function inspect(ll, opts){
   document.getElementById('shareBtn').hidden = false;
   sheet.hidden = false; tuck(false); LF.shareCtx = null;
   head.innerHTML = `<h2>Looking up…</h2><div class="small mono">${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div>`;
-  body.innerHTML = '<div class="loading">Checking parcel and public land records</div>';
+  body.innerHTML = `<div class="loading">${LF.isDG && !LF.on.parcels ? 'Checking public land records' : 'Checking parcel and public land records'}</div>`;
   if(!(opts && opts.live) && await inspectSaved(ll, seq)) return;
   if(seq !== clickSeq) return;
 
+  // The disc golf app asks about owners only when its Property lines switch is on.
+  const owners = !LF.isDG || LF.on.parcels;
   const jobs = {
-    wi: inWI(ll) ? query(SRC.wiParcels, ll, WI_FIELDS) : null,
-    mn: inMN(ll) ? query(SRC.mnParcels, ll, MN_FIELDS) : null,
-    mncov: inMN(ll) ? query(SRC.mnCoverage, ll, ['countyname','gac_open_approval','viewer_url','data_url']) : null,
+    wi: owners && inWI(ll) ? query(SRC.wiParcels, ll, WI_FIELDS) : null,
+    mn: owners && inMN(ll) ? query(SRC.mnParcels, ll, MN_FIELDS) : null,
+    mncov: owners && inMN(ll) ? query(SRC.mnCoverage, ll, ['countyname','gac_open_approval','viewer_url','data_url']) : null,
     padus: query(SRC.padus, ll, ['OBJECTID','Mang_Type','Mang_Name','Des_Tp','Unit_Nm','Pub_Access','SUM_GIS_Acres'], { geometry:false }),
     widnr: inWI(ll) ? identify(SRC.wiDnr, ll, 'visible', true) : null,
     wiclosed: inWI(ll) ? identify(SRC.wiClosed, ll) : null,
@@ -286,7 +304,7 @@ async function inspect(ll, opts){
     mndnr: inMN(ll) ? both(identify(SRC.mnDnr, ll, 'visible:' + LF.MN_DNR_LAYER, true), identify(SRC.mnWia, ll, 'visible', true)) : null,
     rec: inMN(ll) || inWI(ll) ? recLookup(ll) : null
   };
-  const r = {}; await Promise.all(Object.entries(jobs).map(async([k,p])=>{ r[k] = p ? await p : null; }));
+  const r = { noOwners:!owners }; await Promise.all(Object.entries(jobs).map(async([k,p])=>{ r[k] = p ? await p : null; }));
   if(seq !== clickSeq) return;
   render(ll, r);
 }
@@ -438,7 +456,7 @@ function render(ll, r, savedArea){
         ['County PIN', p.county_pin, 1]
       ]) + '</div>';
     }
-  } else {
+  } else if(!r.noOwners){
     const cov = r.mncov && r.mncov.features[0];
     if(cov && String(cov.properties.gac_open_approval).toLowerCase()!=='true'){
       const c = cov.properties, link = c.viewer_url || c.data_url;
@@ -473,7 +491,8 @@ function render(ll, r, savedArea){
   let recHtml = '';   // shown first: a tap on a trail or access dot is about that
   if(recs.length){
     const allTrout = recs.every(x => /Trout/.test(x.key));
-    recHtml = `<div class="block"><h3>${allTrout ? 'Trout water' : 'Trails, roads &amp; water access'}</h3>` + recs.slice(0, 5).map(recBlock).join('') + '</div>';
+    const allCamp = recs.every(x => /Camps$/.test(x.key));
+    recHtml = `<div class="block"><h3>${allTrout ? 'Trout water' : allCamp ? 'Camping' : 'Trails, roads &amp; water access'}</h3>` + recs.slice(0, 5).map(recBlock).join('') + '</div>';
   }
   if(uniq.length){
     html += '<div class="block"><h3>State agency records</h3>' + uniq.slice(0,6).map(([label,x])=>dnrBlock(label,x)).join('') + '</div>';

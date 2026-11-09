@@ -20,6 +20,6 @@ stop(){ kill "$(cat "$OUT/pid")" 2>/dev/null; sleep 0.5; }
 run(){ echo "== $*"; "$@" || fail=1; }
 run node tools/test_geo.js
 run "$VENV/bin/python" server/test_app.py
-for t in smoke smoke_tools smoke_offline smoke_accounts smoke_discgolf smoke_route; do start; run node tools/$t.js "$URL" "$OUT"; stop; done
+for t in smoke smoke_tools smoke_offline smoke_accounts smoke_discgolf smoke_route smoke_dg; do start; run node tools/$t.js "$URL" "$OUT"; stop; done
 echo; [ $fail = 0 ] && echo "ALL SUITES PASSED" || echo "SOME SUITES FAILED (screenshots and logs in $OUT)"
 exit $fail

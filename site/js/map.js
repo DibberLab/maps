@@ -37,7 +37,11 @@ const SRC = LF.SRC = {
   mnTroutStreams:'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/env_trout_stream_designations/MapServer/0',
   mnTroutLakes:  'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/env_trout_lake_designation/MapServer/2',
   wiTroutStreams:'https://dnrmaps.wi.gov/arcgis/rest/services/FM_Trout/FM_TROUT_REGS_WTM_Ext/MapServer/0',
-  wiTroutLakes:  'https://dnrmaps.wi.gov/arcgis/rest/services/FM_Trout/FM_TROUT_REGS_WTM_Ext/MapServer/1'
+  wiTroutLakes:  'https://dnrmaps.wi.gov/arcgis/rest/services/FM_Trout/FM_TROUT_REGS_WTM_Ext/MapServer/1',
+  // Campgrounds: MN state forests, MN state park campsites (one point per site), US Forest Service (both states)
+  mnForestCamps: 'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/struc_state_forest_campgrounds/MapServer/1',
+  mnParkCamps:   'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/struc_parks_and_trails_campsites/MapServer/0',
+  usfsCamps:     'https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RecreationOpportunities_01/MapServer/0'
 };
 /* How each MN trail / road / access layer is drawn; identify.js shares these for tap details. */
 const REC = LF.REC = {
@@ -59,13 +63,18 @@ const REC = LF.REC = {
   mnTroutStreams:{ color:'#00e5ff', dash:null, label:'Designated trout stream' },
   mnTroutLakes:  { color:'#00e5ff', label:'Designated trout lake' },
   wiTroutStreams:{ color:'#00e5ff', dash:null, label:'Trout stream' },
-  wiTroutLakes:  { color:'#00e5ff', label:'Trout lake or pond' }
+  wiTroutLakes:  { color:'#00e5ff', label:'Trout lake or pond' },
+  mnForestCamps: { color:'#7c3aed', label:'State forest campground' },
+  mnParkCamps:   { color:'#7c3aed', label:'State park campsite' },
+  usfsCamps:     { color:'#7c3aed', label:'National forest campground' }
 };
-LF.REC_WHERE = { wiBoat:"ABANDON_FLAG = 'No'" };
+LF.REC_WHERE = { wiBoat:"ABANDON_FLAG = 'No'", mnForestCamps:"site_type <> 'State Forest Day Use Area'",
+  usfsCamps:"markeractivity LIKE '%Camp%' AND forestname IN ('Chequamegon-Nicolet National Forest','Superior National Forest','Chippewa National Forest')" };
 /* The name field of each, loaded with the shapes so hovering can say what a click will open. */
 const REC_NAME = LF.REC_NAME = { mnStateTrails:'trail_name', mnHunterTrails:'trail_name', mnOhv:'trail_name', mnSnowmobile:'trail_name', mnForestRoads:'road_name',
   mnAccess:'access_name', wiStateTrails:'TRAIL_NAME', wiRoadsCar:'LOCAL_NAME', wiRoadsAtvSnow:'LOCAL_NAME', wiRoadsAtv:'LOCAL_NAME', wiRoadsSnow:'LOCAL_NAME',
-  wiBoat:'LMS_BOAT_LANDING_NAME', mnTroutStreams:'kittle_name', mnTroutLakes:'pw_basin_name', wiTroutStreams:'STREAM', wiTroutLakes:'WATERBODY_' };
+  wiBoat:'LMS_BOAT_LANDING_NAME', mnTroutStreams:'kittle_name', mnTroutLakes:'pw_basin_name', wiTroutStreams:'STREAM', wiTroutLakes:'WATERBODY_',
+  mnForestCamps:'facility_name', mnParkCamps:'campground_name', usfsCamps:'recareaname' };
 LF.REC_TAP = { line:22, dot:24 };   // tap and hover reach, in screen pixels
 LF.MN_DNR_LAYER = 3;
 const PARCEL_ZOOM = LF.PARCEL_ZOOM = 15;
@@ -289,6 +298,9 @@ function cased(key, fields, style, o){
 const recLine = key => () => ({ color:REC[key].color, weight:recWidth(), dashArray:REC[key].dash, opacity:.95, lineCap:'round' });
 const roadStyle = f => ({ color:REC.mnForestRoads.color, weight:recWidth(), dashArray:/minimum/i.test(f.properties.road_class || '') ? '10 6' : null, opacity:.95 });
 const wiRoadStyle = f => ({ color:REC.wiRoadsCar.color, weight:recWidth(), dashArray:/season/i.test(f.properties.ROAD_PUBLIC_USE || '') ? '10 6' : null, opacity:.95 });
+const TENT = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 12 5l9 15z"/><path d="M12 20v-6"/></svg>';
+const campIcon = (ll, small) => L.marker(ll, { pane:'recPane', interactive:false, keyboard:false,
+  icon:L.divIcon({ className:'camp-wrap', iconSize:small ? [14, 14] : [22, 22], html:`<div class="camp${small ? ' sm' : ''}">${small ? '' : TENT}</div>` }) });
 const accessDot = (ll, trailer, color) => L.circleMarker(ll, { pane:'recPane', interactive:false, radius:trailer ? 6.5 : 5, color:'#fff', weight:2,
   fillColor:trailer ? color : '#26a69a', fillOpacity:1 });
 /* Trout water sits just above other water and public land, below trails, from zoom 8. One line per creek, nothing under it:
@@ -316,6 +328,11 @@ const layers = LF.layers = {
       pointToLayer:(f, ll) => accessDot(ll, /trailer/i.test(f.properties.launch_type || ''), REC.mnAccess.color) }),
     L.esri.featureLayer({ url:SRC.wiBoat, pane:'recPane', minZoom:10, interactive:false, fields:['OBJECTID', 'LANDING_TYPE_CODE', 'LMS_BOAT_LANDING_NAME'], where:LF.REC_WHERE.wiBoat, recKey:'wiBoat',
       pointToLayer:(f, ll) => accessDot(ll, /ramp/i.test(f.properties.LANDING_TYPE_CODE || ''), REC.wiBoat.color) })]),
+  // Campgrounds: a tent badge each (state park campsites only close in: there are thousands).
+  camp: L.layerGroup([
+    L.esri.featureLayer({ url:SRC.usfsCamps, pane:'recPane', minZoom:8, interactive:false, where:LF.REC_WHERE.usfsCamps, fields:['objectid', 'recareaname'], recKey:'usfsCamps', pointToLayer:(f, ll) => campIcon(ll) }),
+    L.esri.featureLayer({ url:SRC.mnForestCamps, pane:'recPane', minZoom:8, interactive:false, where:LF.REC_WHERE.mnForestCamps, fields:['objectid', 'facility_name'], recKey:'mnForestCamps', pointToLayer:(f, ll) => campIcon(ll) }),
+    L.esri.featureLayer({ url:SRC.mnParkCamps, pane:'recPane', minZoom:14, interactive:false, fields:['objectid', 'campground_name'], recKey:'mnParkCamps', pointToLayer:(f, ll) => campIcon(ll, true) })]),
   padus: L.esri.featureLayer({ url:SRC.padus, pane:'publicPane', minZoom:8, interactive:false, simplifyFactor:0.5, precision:5,
     fields:['OBJECTID','Pub_Access'],
     style: f => { const a = ACCESS[f.properties.Pub_Access]; const c = a && a[2] ? css(a[2]) : '#888';
@@ -343,7 +360,7 @@ const layers = LF.layers = {
 // Remember each picture layer's own opacity so Hide shading can put it back.
 ['widnr', 'wiclosed'].forEach(k => { layers[k]._baseOpacity = layers[k].options.opacity; });
 layers.mndnr.eachLayer(l => { l._baseOpacity = l.options.opacity; });
-const defaults = { terrain:false, trout:false, mntrails:false, mnmotor:false, mnroads:false, mnaccess:false, parcels:true, mncov:true, padus:true, widnr:true, wiclosed:false, wimfl:false, mndnr:true };
+const defaults = Object.assign({ camp:false, terrain:false, trout:false, mntrails:false, mnmotor:false, mnroads:false, mnaccess:false, parcels:true, mncov:true, padus:true, widnr:true, wiclosed:false, wimfl:false, mndnr:true }, LF.APP ? LF.APP.layers : {});   // the disc golf app starts with its own (flavor.js)
 const on = LF.on = Object.assign({}, defaults, prefs.get('layers', {}));
 if(fromLink.layers) Object.keys(layers).forEach(k => { on[k] = fromLink.layers.includes(k); });
 

@@ -14,7 +14,7 @@ const PIN_ZOOM = 7, LAYOUT_ZOOM = 15, ATTR = 'Disc golf: © OpenStreetMap contri
 const box = document.getElementById('l-discgolf'), note = document.getElementById('dgNote');
 /* Off unless you turn it on. Saved only when you tap it ('discgolfOn'); the old 'discgolf' key was
    written for everyone on load, so it doesn't say what anyone chose and is ignored. */
-let data = null, loading = null, on = LF.prefs.get('discgolfOn', false);
+let data = null, loading = null, on = LF.prefs.get('discgolfOn', !!(LF.APP && LF.APP.discgolfOn));
 
 map.createPane('dgPane'); map.getPane('dgPane').style.zIndex = 445;
 map.createPane('dgMarkers'); map.getPane('dgMarkers').style.zIndex = 455;
@@ -27,16 +27,32 @@ const pinIcon = c => L.divIcon({ className:'dg-wrap', iconSize:[28, 28], iconAnc
 
 function load(){
   if(data || loading) return loading;
-  loading = Promise.all([fetch('data/discgolf.json').then(r => { if(!r.ok) throw new Error('missing'); return r.json(); }).catch(() => null), pub()])
-    .then(([d, mine]) => {
-      if(!(d && d.courses.length) && !mine.length) throw new Error('empty');   // placeholder until the first monthly build
+  loading = Promise.all([fetch('data/discgolf.json').then(r => { if(!r.ok) throw new Error('missing'); return r.json(); }).catch(() => null), pub(),
+      fetch('data/courses-us.json').then(r => r.ok ? r.json() : null).catch(() => null)])
+    .then(([d, mine, dir]) => {
+      if(!(d && d.courses.length) && !mine.length && !dir) throw new Error('empty');   // placeholder until the first monthly build
       data = d && d.courses.length ? d : { courses:[], counts:{ courses:0, with_holes:0 } };
-      base = data.courses.slice(); merge();
+      base = withDirectory(data.courses.slice(), dir); merge();
       note.textContent = d && d.courses.length ? `${d.counts.courses.toLocaleString('en-US')} courses, ${d.counts.with_holes} with hole layouts · OpenStreetMap, updated ${new Date(d.generated).toLocaleDateString('en-US')}` +
-        (mine.length ? ` · ${mine.length} added by Line Fence` : '') : `${mine.length} courses added by Line Fence`;
+        (mine.length ? ` · ${mine.length} added by Line Fence` : '') + (dir ? ` · ${dir.count.toLocaleString('en-US')} in the US course list` : '') : `${mine.length} courses added by Line Fence`;
       build(); })
     .catch(() => { note.textContent = 'Course list not available yet.'; loading = null; });
   return loading;
+}
+
+/* ---------- The US course list (data/courses-us.json, tools/import_courses.py) ----------
+   Rows [id, name, lat, lng, holes, city, state, rating]. A course OpenStreetMap already has (same name nearby, or within
+   250 m) keeps its entry and gains the hole count, town and rating; the rest become pins of their own. */
+function withDirectory(osm, dir){
+  if(!dir || !dir.courses) return osm;
+  const out = osm.slice();
+  dir.courses.forEach(([id, name, lat, lng, holes, city, state, rating]) => {
+    const c = [lat, lng], place = [city, state].filter(Boolean).join(', ');
+    const hit = osm.find(o => Math.abs(o.c[0] - lat) < 0.05 && Math.abs(o.c[1] - lng) < 0.07 && (geo.dist(o.c, c) < 250 || sameCourse(o, { name, c })));
+    if(hit){ if(!hit.n && holes) hit.n = holes; if(rating && !hit.rating) hit.rating = rating; hit.place = hit.place || place; return; }
+    out.push({ name, c, n:holes || null, rating, place, dir:id, src:'the US course list', located:'from the US course list' });
+  });
+  return out;
 }
 
 /* ---------- Courses added by Line Fence admins (GET /api/courses, public; plain fetch, as account.js loads later) ----------
@@ -50,11 +66,11 @@ function pub(refresh){
 }
 const norm = n => String(n || '').toLowerCase().replace(/\b(disc golf|dgc|course|park|the)\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 function asCourse(p, osm){
-  if(!p.holes.length) return Object.assign({}, osm, { c:p.c, pub:p.id, pinOnly:true });   // only the pin was moved
+  if(!p.holes.length) return Object.assign({}, osm, { c:p.c, pub:p.id, pinOnly:true, _m:null });   // (_m: its own pin, not the OSM one's)   // only the pin was moved
   const holes = p.holes.map(h => ({ ref:h.n, par:h.par, ft:h.ft, line:h.line, anchors:h.anchors, m:geo.length(h.line) }));
   const info = Object.assign({}, osm && osm.info, p.address ? { address:p.address } : {}, p.notes ? { description:p.notes } : {});
   return Object.assign({}, osm || {}, { name:p.name, c:p.c, n:holes.length, par:holes.reduce((a, h) => a + (+h.par || 0), 0), holes, info,
-    pub:p.id, outline:null, tees:null, baskets:null, src:null });
+    pub:p.id, outline:null, tees:null, baskets:null, src:null, _m:null });
 }
 /* One course, however it's named: "Tjiny Acres" = "Tjiny Acres (putter course)" = "Tjiny Acres Disc Golf Course",
    when they're within 3 km of each other. */
@@ -70,7 +86,7 @@ function merge(){
     const i = out.findIndex(c => sameCourse(c, p));
     if(i < 0){ if(p.holes.length) out.push(asCourse(p)); return; }
     const cur = out[i];
-    if(!p.holes.length && cur.pub && !cur.pinOnly) out[i] = Object.assign({}, cur, { c:p.c });   // a pin moved on a published layout
+    if(!p.holes.length && cur.pub && !cur.pinOnly) out[i] = Object.assign({}, cur, { c:p.c, _m:null });   // a pin moved on a published layout
     else out[i] = asCourse(p, cur);
   });
   data.courses = out;
@@ -91,12 +107,10 @@ LF.listen('dbWrite', e => { if(e.store === 'tracks'){ clearTimeout(mineT); mineT
 setTimeout(loadMine, 1000);
 /* After an admin adds, changes or removes a course. */
 async function refresh(){ await pub(true); if(data){ merge(); build(); } }
-function build(){
-  pins.clearLayers();
-  data.courses.forEach(c => L.marker(c.c, { pane:'dgMarkers', icon:pinIcon(c), title:c.name, keyboard:false })
-    .on('click', e => { L.DomEvent.stopPropagation(e); if(!LF.mode) open(c); }).addTo(pins));
-  view();
-}
+/* Pins are made for the courses on screen only (thousands nationwide would bog a phone down). */
+const marker = c => c._m || (c._m = L.marker(c.c, { pane:'dgMarkers', icon:pinIcon(c), title:c.name, keyboard:false })
+  .on('click', e => { L.DomEvent.stopPropagation(e); if(!LF.mode) open(c); }));
+function build(){ pins.clearLayers(); view(); }
 function show(v){
   on = v; box.checked = v;
   if(v){ load(); view(); map.attributionControl.addAttribution(ATTR); }
@@ -109,7 +123,11 @@ function view(){
   const z = map.getZoom();
   document.getElementById('map').classList.toggle('dg-labels', z >= 12);
   document.getElementById('map').classList.toggle('dg-small', z < 10);   // statewide views: small dots, not piles of pins
-  if(z >= PIN_ZOOM){ if(!map.hasLayer(pins)) pins.addTo(map); } else map.removeLayer(pins);
+  if(z >= PIN_ZOOM){
+    const vb = map.getBounds().pad(0.25), want = new Set(data.courses.filter(c => vb.contains(c.c)).map(marker));
+    pins.eachLayer(m => { if(!want.has(m)) pins.removeLayer(m); }); want.forEach(m => { if(!pins.hasLayer(m)) pins.addLayer(m); });
+    if(!map.hasLayer(pins)) pins.addTo(map);
+  } else map.removeLayer(pins);
   layout.clearLayers();
   if(z < LAYOUT_ZOOM){ map.removeLayer(layout); return; }
   const b = map.getBounds().pad(0.3);
@@ -140,7 +158,8 @@ function open(c, holeRef){
   const holes = c.holes || [], total = holes.reduce((s, h) => s + h.m, 0);
   const i = c.info || {};
   const web = i.website || i.url;
-  const rows = [['Holes', c.n], ['Par', c.par], ['Total length', holes.length && holes.length === c.n ? ft(total) : null],
+  const rows = [['Holes', c.n], ['Par', c.par], ['Rating', c.rating ? '★'.repeat(Math.round(c.rating)) + '☆'.repeat(Math.max(0, 5 - Math.round(c.rating))) + ' ' + c.rating + ' / 5' : null],
+    ['Where', !i.address && c.place ? c.place : null], ['Total length', holes.length && holes.length === c.n ? ft(total) : null],
     ['Address', i.address], ['Operator', i.operator], ['Fee', i.charge || (i.fee === 'yes' ? 'Yes' : i.fee === 'no' ? 'Free' : i.fee)], ['Hours', i.opening_hours],
     ['Access', i.access && i.access !== 'yes' ? i.access : null], ['Dogs', i.dog], ['Surface', i.surface], ['Phone', i.phone]]
     .filter(r => r[1] != null && r[1] !== '');
@@ -230,7 +249,9 @@ function find(q){
 box.addEventListener('change', () => { LF.prefs.set('discgolfOn', box.checked); show(box.checked); });
 map.on('moveend zoomend', view);
 show(on);
-LF.discgolf = { dim, sameCourse, key, isMine:c => isMine(c), find:q => { const c = find(q); if(c){ open(c); fit(bounds(c), 16); } return !!c; }, open, data:() => data, load, pub, refresh,
+/* Open a course and show all of it (Courses near me). */
+function showCourse(c){ open(c); fit(bounds(c), 17); }
+LF.discgolf = { dim, sameCourse, key, isMine:c => isMine(c), showCourse, find:q => { const c = find(q); if(c){ open(c); fit(bounds(c), 16); } return !!c; }, open, data:() => data, load, pub, refresh,
   openPublic:async id => { await pub(); const p = (pubList || []).find(x => x.id === id); if(!p) return;
     const c = (data && data.courses.find(x => x.pub === id)) || asCourse(p); open(c); fit(bounds(c), 17); } };
 })(window.LF);

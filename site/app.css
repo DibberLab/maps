@@ -436,3 +436,17 @@ form.edit label.check input{display:inline-block;width:20px;height:20px;margin:0
 .sgrid td.over{color:#b45309}
 .winner{font:700 18px var(--display);margin:4px 0}
 .tag.live-tag{background:#c62828;color:#fff;padding:1px 6px;font-size:11px}
+
+/* Campgrounds (map.js campIcon). */
+.camp{width:22px;height:22px;border-radius:50%;background:#7c3aed;border:2px solid #fff;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.45);box-sizing:border-box}
+.camp.sm{width:14px;height:14px;border-width:2px}
+
+/* The disc golf app (flavor.js): its own colours on the same layout. */
+.app-dg .brand{background:#0b3d2e}
+.app-dg .brand span{color:#facc15}
+.dgrow{display:flex;flex-direction:column;min-width:0;flex:1}
+.row .dist{font:600 14px var(--body);color:var(--muted);white-space:nowrap}
+[data-near] input{width:100%;font:16px var(--body);padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:inherit;margin:4px 0 8px}
+.fab3{bottom:calc(132px + env(safe-area-inset-bottom,0px))}
+.app-dg #nearBtn{background:#0b3d2e;color:#facc15;border-color:#0b3d2e}
+.app-dg #nearBtn svg{stroke:#facc15}

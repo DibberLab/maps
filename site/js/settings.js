@@ -9,7 +9,10 @@ window.LF = window.LF || {};
 'use strict';
 const panel = document.getElementById('layersPanel');
 const boxes = () => Array.from(panel.querySelectorAll('input[type=checkbox][id^="l-"]'));
-let timer = null, applying = false, loadedFor = null;
+let timer = null, applying = false, loadedFor = null, all = {};   // all: the account's whole settings object as last read
+/* Each app keeps its own layer choices on the account: Line Fence at the top level (as always), the disc golf app under
+   .dg. The lined-up photo (photoShift) is shared: the ground is the same in both. */
+const mine = s => LF.isDG ? Object.assign({}, s && s.dg, { photoShift:s && s.photoShift }) : s;
 
 function current(){
   const layers = {};
@@ -35,7 +38,9 @@ function apply(s){
 async function save(){
   const u = LF.account && LF.account.user();
   if(!u) return;
-  try{ await LF.api('POST', 'me/settings', { settings:current() }); }catch(e){ /* offline: the next change or sign-in tries again */ }
+  const cur = current();
+  all = LF.isDG ? Object.assign({}, all, { dg:Object.assign({}, cur, { photoShift:undefined }), photoShift:cur.photoShift }) : Object.assign({}, cur, all.dg ? { dg:all.dg } : {});
+  try{ await LF.api('POST', 'me/settings', { settings:all }); }catch(e){ /* offline: the next change or sign-in tries again */ }
 }
 function schedule(){ if(applying) return; clearTimeout(timer); timer = setTimeout(save, 1500); }
 panel.addEventListener('change', schedule);
@@ -49,8 +54,11 @@ async function load(u, opening){
   try{
     const j = await LF.api('GET', 'me/settings');
     const fromLink = opening && LF.fromLink && (LF.fromLink.base || LF.fromLink.layers);
-    if(j.settings && !fromLink) apply(j.settings);
-    else if(!j.settings) save();
+    all = j.settings || {};
+    const s = mine(j.settings);
+    if(s && (s.base || s.layers) && !fromLink) apply(s);
+    else if(s && s.photoShift && LF.photoShift) LF.photoShift.set(s.photoShift);
+    if(!s || !(s.base || s.layers)) save();
   }catch(e){}
 }
 LF.listen('account', u => { if(!u) loadedFor = null; else load(u); });

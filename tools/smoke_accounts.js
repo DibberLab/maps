@@ -22,17 +22,17 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
     page.on('dialog', d => d.accept(d.type() === 'prompt' ? 'hunter@example.com' : undefined));
     return page;
   }
-  const tool = async (p, t) => { await p.click('#toolsBtn'); await p.click(`[data-tool=${t}]`); };
+  const tool = async (p, t) => { await p.click('#menuBtn'); await p.click(`[data-tool=${t}]`); };
   const head = p => p.textContent('#sheetHead');
   const signUp = async (p, email, pw, nm) => {
-    await p.click('#toolsBtn'); await p.click('#accountEntry');
+    await p.click('#menuBtn'); await p.click('#accountEntry');
     await p.click('[data-act=to-signup]');
     await p.fill('#a-name', nm); await p.fill('#a-email', email); await p.fill('#a-pw', pw);
     await p.click('[data-act=signup]');
     await p.waitForFunction(() => LF.account.user(), null, { timeout: 5000 });
   };
   const signIn = async (p, email, pw) => {
-    await p.click('#toolsBtn'); await p.click('#accountEntry');
+    await p.click('#menuBtn'); await p.click('#accountEntry');
     await p.fill('#a-email', email); await p.fill('#a-pw', pw); await p.click('[data-act=signin]');
     await p.waitForFunction(() => LF.account.user(), null, { timeout: 5000 });
   };
@@ -101,7 +101,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(true, 'admin approves from the portal');
 
   // 5. The hunter checks again, is approved, and their earlier item joins the account.
-  await hunter.click('#toolsBtn'); await hunter.click('#accountEntry'); await hunter.click('[data-act=recheck]');
+  await hunter.click('#menuBtn'); await hunter.click('#accountEntry'); await hunter.click('[data-act=recheck]');
   await hunter.waitForFunction(() => LF.account.approved(), null, { timeout: 5000 });
   check(true, 'Check again picks up the approval');
   await dropWaypoint(hunter, 'Ridge stand', 220, 330);
@@ -130,7 +130,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(await names(hunter) === 'Before sign-in', 'a delete on one device removes it on the other');
 
   // 8. Sign out clears the device; items stay in the account.
-  await phone2.click('#toolsBtn'); await phone2.click('#accountEntry'); await phone2.click('[data-act=signout]');
+  await phone2.click('#menuBtn'); await phone2.click('#accountEntry'); await phone2.click('[data-act=signout]');
   await phone2.waitForFunction(() => !LF.account.user());
   check(await names(phone2) === '', 'signing out removes the account\'s items from the device');
   await signIn(phone2, 'hunter@example.com', 'deerseason'); await phone2.evaluate(() => LF.sync.now());

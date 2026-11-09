@@ -126,7 +126,7 @@ async function signOut(){
   LF.closeSheet(); flash('Signed out');
 }
 
-if(entry) entry.addEventListener('click', () => { LF.closeTools(); sheet(); });
+if(entry) entry.addEventListener('click', () => { LF.closeTools(); if(LF.menu) LF.menu.close(); sheet(); });
 updateEntry();
 refresh();
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && user && user.status === 'pending') refresh(); });

@@ -24,7 +24,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   check(await page.evaluate(() => /manifest-dg\.json$/.test(document.querySelector('link[rel=manifest]').href)), 'and its own install manifest and icon');
   const on = await page.evaluate(() => LF.on);
   check(!on.parcels && on.trout && on.camp && on.padus && await page.isChecked('#l-discgolf'), 'starts with courses, campgrounds, trout water and public land on, property lines off');
-  check(await page.evaluate(() => /Play/.test(document.querySelector('#toolsPanel h3').textContent)), 'the + panel starts with the disc golf tools');
+  check(await page.evaluate(() => /Play/.test(document.querySelector('#menuActions h3').textContent)), 'the ☰ menu starts with the disc golf tools');
   check(await page.evaluate(() => /Recreation/.test(document.querySelector('#layersPanel h3').textContent)), 'the layers panel starts with courses and campgrounds');
 
   // Courses near me.

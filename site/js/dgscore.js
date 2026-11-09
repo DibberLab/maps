@@ -41,6 +41,7 @@ async function start(){
   const roundRow = r => `<button class="row" data-act="open-round" data-id="${esc(r.id)}"><span><b>${esc(r.name)}</b><span class="small">${when(r.started)} · ` +
     (r.finished ? r.sides.map(s => esc(s.name) + ' ' + totals(r, s.id).strokes).join(' · ') : `on hole ${r.holes[r.hole].n} of ${r.holes.length}`) + '</span></span></button>';
   LF.showSheet('<h2>Score a round</h2><div class="small">Disc golf</div>',
+    '<div class="btnrow"><button class="btn" data-act="stats">My stats</button>' + (LF.leaderboard ? '<button class="btn" data-act="board">Leaderboard</button>' : '') + '</div>' +
     (open.length ? '<div class="block"><h3>In progress</h3><div class="rows">' + open.map(roundRow).join('') + '</div></div>' : '') +
     `<form class="edit" onsubmit="return false"><h3>New round</h3>
       <label>Course<select id="r-course">${Array.from(cs.keys()).sort().map(f => `<option value="${esc(f)}">${esc(LF.geo.folderPath(f).pop())} · ${cs.get(f).length} holes</option>`).join('')}
@@ -60,6 +61,8 @@ async function start(){
     { onAct: async (act, el) => {
       const $ = id => document.getElementById(id), redraw = () => { $('r-sides').innerHTML = sideList(); $('r-recent').innerHTML = recentList(); };
       if(act === 'open-round'){ const r = await db.get('rounds', el.dataset.id); if(r) (r.finished ? summary(r) : card(r)); }
+      if(act === 'stats') return myStats();
+      if(act === 'board') return LF.leaderboard();
       if(act === 'rm'){ sides.splice(+el.dataset.i, 1); redraw(); }
       if(act === 'quick'){ sides.push({ id:'s' + Date.now().toString(36) + sides.length, name:el.dataset.n, members:[] }); redraw(); }
       if(act === 'add'){
@@ -101,8 +104,48 @@ async function showHole(r){
   const key = r.id + ':' + r.hole;
   if(shown !== key){ shown = key; LF.fitVisible ? LF.fitVisible(L.latLngBounds(ll), 19) : map.fitBounds(L.latLngBounds(ll)); }
   LF.select.shape(ll, { color:DG, weight:5 });
+  live(ll);
   return geo.length(ll);
 }
+
+/* ---------- While you play: distance to the basket from where you stand, and the wind on this hole ---------- */
+const liveLayer = L.layerGroup().addTo(map);
+let liveOff = null, liveLine = null;
+const fmtFt = m => m < 1609 ? Math.round(m * 3.28084).toLocaleString('en-US') + ' ft' : (m / 1609.344).toFixed(1) + ' mi';
+function live(ll){
+  stopLive(); liveLine = ll;
+  const tee = ll[0], basket = ll[ll.length - 1], bearing = geo.bearing(tee, basket);
+  const show = fix => {
+    const el = document.getElementById('r-dist'); if(!el || !fix) return;
+    const d = geo.dist(fix.ll, basket), far = d > 2000;
+    el.innerHTML = far ? `You're ${fmtFt(d)} from this hole` : `<b>${fmtFt(d)}</b> to the basket` + (geo.dist(fix.ll, tee) > 8 ? ` · ${fmtFt(geo.dist(fix.ll, tee))} from the tee` : '') +
+      (fix.acc > 8 ? ` <span class="small">(±${Math.round(fix.acc * 3.28084)} ft)</span>` : '');
+    liveLayer.clearLayers();
+    if(!far) L.polyline([fix.ll, basket], { pane:'hiPane', color:'#facc15', weight:3, dashArray:'4 7', interactive:false }).addTo(liveLayer);
+  };
+  LF.gps.start('score');
+  liveOff = LF.listen('gps', show);
+  if(LF.gps.last && Date.now() - LF.gps.last.t < 30000) show(LF.gps.last);
+  if(LF.weather) LF.weather.get(tee).then(w => {
+    const el = document.getElementById('r-wind'); if(!el) return;
+    const v = LF.weather.vsHole(w.current, bearing);
+    el.innerHTML = v.text === 'Calm' ? 'Wind: calm' : `${LF.weather.arrow(w.current.wind_direction_10m)} Wind ${v.mph} mph${v.gust > v.mph + 4 ? ' (gusts ' + v.gust + ')' : ''} · <b>${v.text}</b>`;
+  }).catch(() => {});
+}
+function stopLive(){ if(liveOff){ liveOff(); liveOff = null; LF.gps.stop('score'); } liveLayer.clearLayers(); }
+
+/* ---------- Your own stats, hole by hole: fairway hit, putts, OB (kept on this phone's copy of the round) ---------- */
+function meId(r){
+  if(r.me && r.sides.some(s => s.id === r.me)) return r.me;
+  const u = LF.account && LF.account.user(), name = u && (u.name || '').trim().toLowerCase();
+  const s = r.sides.find(x => name && (x.name.trim().toLowerCase() === name || x.members.some(m => m.trim().toLowerCase() === name))) || r.sides[0];
+  return s && s.id;
+}
+const statsHtml = r => { const st = (r.stats || {})[r.hole] || {}, me = r.sides.find(s => s.id === meId(r));
+  const tog = (v, label) => `<button class="btn small-btn${st.fw === v ? ' on' : ''}" data-act="fw" data-v="${v}">${label}</button>`;
+  const cnt = (k, label) => `<span class="hstat"><span class="small">${label}</span><button class="sbtn sm" data-act="st-" data-k="${k}" aria-label="One fewer ${label}">−</button><b>${st[k] || 0}</b><button class="sbtn sm" data-act="st+" data-k="${k}" aria-label="One more ${label}">+</button></span>`;
+  return `<div class="hstats"><div class="small">My stats${r.sides.length > 1 && me ? ' (' + esc(me.name) + ')' : ''}</div>` +
+    `<div class="hstat-row"><span class="hstat"><span class="small">Fairway</span>${tog(true, 'Hit')}${tog(false, 'Missed')}</span>${cnt('putts', 'Putts')}${cnt('ob', 'OB')}</div></div>`; };
 async function card(r){
   const h = r.holes[r.hole];
   const row = s => { const v = r.scores[s.id][r.hole], tot = totals(r, s.id);
@@ -113,7 +156,8 @@ async function card(r){
       `<button class="sbtn" data-act="inc" data-s="${s.id}" aria-label="One more for ${esc(s.name)}">+</button></div>`; };
   LF.showSheet(`<h2>Hole ${h.n} · Par ${h.par}</h2><div class="small">${esc(r.name)} · hole ${r.hole + 1} of ${r.holes.length}<span id="r-len"></span>` +
       (r.live ? ` · <span class="tag live-tag">Live</span>` : '') + '</div>',
-    `<div data-round="${esc(r.id)}"></div><div class="scard">${r.sides.map(row).join('')}</div>
+    `<div data-round="${esc(r.id)}"></div><div class="hlive"><div id="r-dist" class="small">Finding you…</div><div id="r-wind" class="small"></div></div><div class="scard">${r.sides.map(row).join('')}</div>
+     ${statsHtml(r)}
      <div class="btnrow"><button class="btn" data-act="hpar-">Par −</button><button class="btn" data-act="hpar+">Par +</button><span class="small" style="align-self:center">Tap a number for par</span></div>
      <div class="btnrow acts"><button class="btn" data-act="prev"${r.hole ? '' : ' disabled'}>‹ Hole ${r.hole ? r.holes[r.hole - 1].n : ''}</button>
        ${r.hole < r.holes.length - 1 ? `<button class="btn primary" data-act="next">Hole ${r.holes[r.hole + 1].n} ›</button>` : '<button class="btn primary" data-act="finish">Finish round</button>'}
@@ -130,6 +174,12 @@ async function card(r){
       else if(act === 'hpar-' || act === 'hpar+'){ h.par = Math.max(2, Math.min(7, h.par + (act === 'hpar+' ? 1 : -1))); ops.push({ hole:r.hole, par:h.par }); }
       else if(act === 'prev') r.hole = Math.max(0, r.hole - 1);
       else if(act === 'next'){ r.sides.forEach(x => { if(r.scores[x.id][r.hole] == null) score(x.id, h.par); }); r.hole += 1; }   // untouched = par
+      else if(act === 'fw' || act === 'st+' || act === 'st-'){   // my stats: this phone only, nothing sent
+        r.me = meId(r); r.stats = r.stats || {}; const st = r.stats[r.hole] = Object.assign({}, r.stats[r.hole]);
+        if(act === 'fw'){ const v = b.dataset.v === 'true'; st.fw = st.fw === v ? null : v; }
+        else st[b.dataset.k] = Math.max(0, Math.min(9, (st[b.dataset.k] || 0) + (act === 'st+' ? 1 : -1)));
+        return card(await db.put('rounds', r));
+      }
       else if(act === 'full') return summary(r);
       else if(act === 'invite') return invite(r);
       else if(act === 'finish'){
@@ -144,6 +194,7 @@ async function card(r){
   poll(r);
   const len = await showHole(r);
   const el = document.getElementById('r-len'); if(el && len) el.textContent = ' · ' + Math.round(len * 3.28084) + ' ft';
+  if(!len){ stopLive(); const d = document.getElementById('r-dist'); if(d) d.textContent = 'This hole isn\'t on the map, so no distance to the basket.'; }
 }
 
 /* ---------- Full card and result ---------- */
@@ -237,7 +288,7 @@ function poll(r){
     }catch(e){}
   }, 3000);
 }
-function leaving(id){ setTimeout(() => { if(!document.querySelector(`#sheetBody [data-round="${CSS.escape(id)}"]`)){ clearInterval(timer); timer = null; } }, 0); }
+function leaving(id){ setTimeout(() => { if(!document.querySelector(`#sheetBody [data-round="${CSS.escape(id)}"]`)){ clearInterval(timer); timer = null; } if(!document.getElementById('r-dist')) stopLive(); }, 0); }
 async function join(liveId){
   let res;
   try{ res = await LF.api('GET', 'rounds/' + encodeURIComponent(liveId)); }catch(e){ flash(e.status === 404 ? 'That round was removed or the link is wrong.' : 'Could not open the round: ' + e.message, 5000); return; }
@@ -257,6 +308,34 @@ async function join(liveId){
 const openLink = l => { if(l.round) join(l.round); };
 if(LF.fromLink && LF.fromLink.round) setTimeout(() => openLink(LF.fromLink), 400);
 window.addEventListener('hashchange', () => openLink(LF.share.parse(location.hash)));
+
+/* ---------- My stats: every finished round, from my side's scores and the stats I kept ---------- */
+async function myStats(){
+  const all = (await db.all('rounds')).filter(r => r.finished).sort((a, b) => b.finished - a.finished);
+  let holes = 0, strokes = 0, par = 0, fwHit = 0, fwAll = 0, putts = 0, puttHoles = 0, ob = 0, obRounds = 0, aces = 0, birdies = 0, pars = 0, bogeys = 0;
+  const best = new Map(), rows = [];
+  all.forEach(r => {
+    const me = meId(r); if(!me || !r.scores[me]) return;
+    const sc = r.scores[me], t = totals(r, me), full = sc.every(v => v != null);
+    sc.forEach((v, i) => { if(v == null) return; holes++; strokes += v; par += r.holes[i].par; const d = v - r.holes[i].par;
+      if(v === 1) aces++; else if(d <= -1) birdies++; else if(d === 0) pars++; else if(d === 1) bogeys++; });
+    const st = r.stats || {}; let kept = false;
+    Object.values(st).forEach(x => { if(x.fw === true || x.fw === false){ fwAll++; if(x.fw) fwHit++; } if(x.putts){ putts += x.putts; puttHoles++; } if(x.ob){ ob += x.ob; } kept = true; });
+    if(kept) obRounds++;
+    if(full){ const b = best.get(r.name); if(!b || t.diff < b.diff) best.set(r.name, { diff:t.diff, strokes:t.strokes, at:r.finished, n:r.holes.length }); }
+    rows.push(`<button class="row" data-act="open-round" data-id="${esc(r.id)}"><span><b>${esc(r.name)}</b><span class="small">${when(r.started)} · ${t.strokes} (${vsPar(t.diff)})${full ? '' : ' · ' + t.played + ' of ' + r.holes.length + ' holes'}</span></span></button>`);
+  });
+  const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
+  const dl = [['Rounds', rows.length], ['Average per hole', holes ? vsPar(Math.round((strokes - par) / holes * 100) / 100).replace(/^E$/, 'even') + ' vs par' : '—'],
+    ['Aces · birdies · pars · bogeys', `${aces} · ${birdies} · ${pars} · ${bogeys}`], ['Fairways hit', fwAll ? `${pct(fwHit, fwAll)} (${fwHit} of ${fwAll})` : '—'],
+    ['Putts per hole', puttHoles ? (putts / puttHoles).toFixed(2) : '—'], ['OB per round', obRounds ? (ob / obRounds).toFixed(1) : '—']];
+  LF.showSheet('<h2>My stats</h2><div class="small">From your finished rounds' + (LF.account.user() ? ' as ' + esc(LF.account.user().name || '') : '') + '</div>',
+    `<div class="block"><dl>${dl.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+       <p class="small">Fairways, putts and OB count the holes where you tapped them on the scorecard.</p></div>` +
+    (best.size ? '<div class="block"><h3>Best round per course</h3><dl>' + Array.from(best).map(([n, b]) => `<dt>${esc(n)}</dt><dd>${b.strokes} (${vsPar(b.diff)}) · ${when(b.at)}</dd>`).join('') + '</dl></div>' : '') +
+    (rows.length ? '<div class="block"><h3>Rounds</h3><div class="rows">' + rows.join('') + '</div></div>' : '<p class="note">Finish a round to see stats here.</p>'),
+    { back:{ label:'Rounds', go:start }, onAct: async (act, el) => { if(act === 'open-round'){ const r = await db.get('rounds', el.dataset.id); if(r) summary(r); } } });
+}
 
 /* ---------- The round's track and the pill under the search bar ----------
    Every round played on this phone records a GPS track from the start (unless a track is already recording).
@@ -293,5 +372,5 @@ if(pill){
   db.ready().then(ok => ok && setTimeout(pillRefresh, 500));
 }
 
-LF.rounds = { start, card, summary, join };
+LF.rounds = { start, card, summary, join, myStats, meId };
 })(window.LF);

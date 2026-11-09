@@ -33,7 +33,7 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   });
   const vw = page.viewportSize();
   const at = (fx, fy) => page.mouse.click(Math.round(vw.width * fx), Math.round(vw.height * fy));
-  const tool = async t => { await page.click('#toolsBtn'); await page.click(`[data-tool=${t}]`); };
+  const tool = async t => { await page.click('#menuBtn'); await page.click(`[data-tool=${t}]`); };
   const count = store => page.evaluate(s => LF.db.all(s).then(a => a.length), store);
   const saveForm = async name => { await page.waitForSelector('#f-name'); if(name) await page.fill('#f-name', name); await page.click('[data-act=save]');
     await page.waitForFunction(() => !/^(New|Edit) /.test(document.querySelector('#sheetHead h2').textContent)); };
@@ -209,12 +209,12 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
     'card shows folder, color, style, width and imported id');
   await page.screenshot({ path: path.join(OUT, 'tools-card.png') });
 
-  // 9b. The logo opens the menu: account, content by type with counts, folders; Waypoints opens a filtered list.
+  // 9b. + opens your content: by type with counts, folders (the account is at the top of ☰); Waypoints opens a filtered list.
   await page.click('#closeSheet');
-  await page.click('#menuBtn');
-  await page.waitForSelector('#menu:not([hidden]) .mi[data-m=waypoints] .n');
+  await page.click('#toolsBtn');
+  await page.waitForSelector('#toolsPanel:not([hidden]) .mi[data-m=waypoints] .n');
   const wpCount = await page.textContent('.mi[data-m=waypoints] .n');
-  check(+wpCount >= 2 && await page.locator('.mi[data-m=folder]').count() >= 2 && /Tester/.test(await page.textContent('.mi.acct')),
+  check(+wpCount >= 2 && await page.locator('.mi[data-m=folder]').count() >= 2 && /Tester/.test(await page.textContent('#accountEntry .who')),
     `menu shows the account, ${wpCount} waypoints and the folders`);
   // Folders are a tree: Deer camp opens to show Stands; its switch hides both without opening the list.
   await page.click('.mf .caret[data-v="Deer camp"]');
@@ -225,7 +225,7 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.click('.mf:has(.mi[data-v="Deer camp"]) .switch');
   await page.waitForFunction(() => !document.querySelector('.mf:has(.mi[data-v="Deer camp"]) input').checked && !document.querySelector('.mf:has(.mi[data-v="Deer camp"]) input').disabled);
   const hid = await inCamp();
-  check(hid.length >= 2 && hid.every(Boolean) && await page.isVisible('#menu'), `folder switch hides the folder and its subfolders (${hid.length} items), menu stays open`);
+  check(hid.length >= 2 && hid.every(Boolean) && await page.isVisible('#toolsPanel'), `folder switch hides the folder and its subfolders (${hid.length} items), menu stays open`);
   await page.screenshot({ path: path.join(OUT, 'tools-menu.png') });
   await page.click('.mf:has(.mi[data-v="Deer camp"]) .switch');
   await page.waitForFunction(() => document.querySelector('.mf:has(.mi[data-v="Deer camp"]) input').checked && !document.querySelector('.mf:has(.mi[data-v="Deer camp"]) input').disabled);
@@ -242,10 +242,11 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.click('#sheetBack');
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Deer camp")');
   check(await page.locator('#sheetBody .folder[data-f="Deer camp / Stands"]').count() === 1, 'Back returns to the folder list');
-  await page.click('#menuBtn');
+  await page.evaluate(() => LF.closeSheet());   // + sits under an open panel
+  await page.click('#toolsBtn');
   await page.click('.mi[data-m=waypoints]');
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Waypoints")');
-  check(await page.locator('#sheetBody .row-wrap').count() === +wpCount && await page.isHidden('#menu'), 'Waypoints opens the list filtered to waypoints');
+  check(await page.locator('#sheetBody .row-wrap').count() === +wpCount && await page.isHidden('#toolsPanel'), 'Waypoints opens the list filtered to waypoints');
   await page.click('[data-act=filter][data-t=""]');
   await page.waitForSelector('#sheet:not([hidden]) h2:has-text("My content")');
 
@@ -578,7 +579,7 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   //     drag and turn the picture, publish; everyone sees it; it shows in Score a round; Add to my map; publish back.
   await page.goto('about:blank'); await page.goto(BASE + '#map=17/45.87/-92.60', { waitUntil:'domcontentloaded' });
   await page.waitForFunction(() => window.LF && LF.dgadmin && LF.account.user());
-  await page.click('#menuBtn'); await page.click('.mi[data-m=dgcourses]');
+  await page.evaluate(() => LF.closeSheet()); await page.click('#toolsBtn'); await page.click('.mi[data-m=dgcourses]');
   await page.waitForSelector('#sheetBody [data-act=add]'); await page.click('#sheetBody [data-act=add]');
   // Read pars & distances from a screenshot: the server's Claude call is stubbed here (the test server has no key).
   await page.route('**/api/courses/read', r => r.fulfill({ status:200, contentType:'application/json',
@@ -638,7 +639,7 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   const mine = await page.evaluate(() => LF.db.all('tracks').then(t => t.filter(x => x.folder === 'Disc Golf / Pine Test').map(x => x.dg.hole + '/' + x.dg.par).sort().join(',')));
   check(mine === '1/3,2/4', 'Add to my map copies it as disc golf holes: ' + mine);
   await page.evaluate(() => LF.db.all('tracks').then(t => { const h = t.find(x => x.folder === 'Disc Golf / Pine Test' && x.dg.hole === '1'); h.dg.par = '4'; return LF.db.put('tracks', h); }));
-  await page.click('#menuBtn'); await page.click('.mi[data-m=dgcourses]');
+  await page.evaluate(() => LF.closeSheet()); await page.click('#toolsBtn'); await page.click('.mi[data-m=dgcourses]');
   await page.waitForSelector('#pub-folder'); await page.selectOption('#pub-folder', 'Disc Golf / Pine Test');
   page.once('dialog', d => d.accept());
   await page.click('#sheetBody [data-act=publish]');
@@ -702,7 +703,7 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await ctx.setGeolocation({ latitude:45.86, longitude:-92.62, accuracy:3 });
   const hole1Before = await page.evaluate(() => LF.db.all('tracks').then(t => t.find(x => x.folder === 'Disc Golf / Test Park' && x.dg && x.dg.hole === '1').points[0]));
   const pubBefore = await page.evaluate(() => LF.api('GET', 'courses').then(r => r.courses.find(c => c.name === 'Pine Test')));
-  await page.click('#menuBtn'); await page.click('.mi[data-m=photo]');
+  await page.evaluate(() => LF.closeSheet()); await page.click('#toolsBtn'); await page.click('.mi[data-m=photo]');
   await page.waitForSelector('.photobar:not([hidden]) [data-p=here]'); await page.click('.photobar [data-p=here]');
   for(let i = 0; i < 4; i++){ await ctx.setGeolocation({ latitude:45.86 + i * 0.000002, longitude:-92.62, accuracy:3 }); await page.waitForTimeout(350); }
   await page.click('.photobar [data-p=use]');
@@ -734,6 +735,58 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForTimeout(1500);
   const rl = await page.evaluate(() => ({ n:LF.photoShift.get().length, t:document.querySelector('.leaflet-tile-pane').style.transform, c:LF.map.getCenter(), raw:localStorage.getItem('lf.photoShift') }));
   check(rl.n === 1 && /translate/.test(rl.t), 'the shift is kept after a reload: ' + JSON.stringify(rl));
+
+  // 23. Playing better than the other app: weather on the course panel, distance to the basket and the wind on the hole,
+  //     my stats, the crew leaderboard and my bag. (Open-Meteo answers from a fixture: wind 10 mph from the west.)
+  await page.route('**/api.open-meteo.com/**', r => r.fulfill({ status:200, contentType:'application/json', body:JSON.stringify({
+    current:{ temperature_2m:61, apparent_temperature:61, wind_speed_10m:10, wind_direction_10m:270, wind_gusts_10m:18, weather_code:1, precipitation:0 },
+    hourly:{ time:['2026-11-09T12:00', '2026-11-09T13:00', '2026-11-09T14:00', '2026-11-09T15:00', '2026-11-09T16:00', '2026-11-09T17:00', '2026-11-09T18:00'],
+      temperature_2m:[61, 62, 63, 63, 62, 60, 58], precipitation_probability:[0, 0, 10, 20, 20, 10, 0], wind_speed_10m:[10, 11, 12, 12, 10, 8, 6],
+      wind_direction_10m:[270, 270, 280, 280, 290, 290, 300], weather_code:[1, 1, 2, 2, 3, 3, 3] } }) }));
+  await page.evaluate(() => LF.closeSheet());
+  await page.evaluate(id => LF.discgolf.openPublic(id), pubd.id);
+  await page.waitForFunction(() => /Wind 10 mph from the W/.test((document.getElementById('dg-wx') || {}).textContent || ''), null, { timeout:10000 }).catch(() => {});
+  check(/61°F[\s\S]*Wind 10 mph from the W, gusts 18/.test(await page.textContent('#dg-wx')), 'the course panel shows the weather and wind');
+  // A round on Test Park, standing on hole 1's tee: distance to the basket and a crosswind.
+  await ctx.setGeolocation({ latitude:45.86, longitude:-92.62, accuracy:4 });
+  await page.evaluate(() => LF.closeSheet());
+  await tool('dgscore'); await page.waitForSelector('#r-course');
+  await page.selectOption('#r-course', 'Disc Golf / Test Park');
+  await page.click('#sheetBody [data-act=go]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1")');
+  await page.waitForFunction(() => /to the basket/.test(document.getElementById('r-dist').textContent), null, { timeout:10000 }).catch(() => {});
+  check(/\d+ ft to the basket/.test(await page.textContent('#r-dist')), 'the scorecard shows the distance to the basket: ' + (await page.textContent('#r-dist')).trim());
+  await page.waitForFunction(() => /Crosswind|wind/i.test(document.getElementById('r-wind').textContent), null, { timeout:10000 }).catch(() => {});
+  check(/Crosswind, left to right/.test(await page.textContent('#r-wind')), 'and the wind on this hole: ' + (await page.textContent('#r-wind')).trim());
+  await page.click('#sheetBody [data-act=fw][data-v=true]');
+  await page.click('#sheetBody [data-act="st+"][data-k=putts]'); await page.click('#sheetBody [data-act="st+"][data-k=putts]');
+  await page.click('#sheetBody [data-act="st+"][data-k=ob]');
+  check(await page.isVisible('#sheetBody [data-act=fw][data-v=true].on'), 'stats tap in: fairway hit, 2 putts, 1 OB');
+  page.once('dialog', d => d.accept());
+  await page.click('#sheetBody [data-act=finish]');
+  await page.waitForSelector('#sheetBody .winner, #sheetBody .sgrid', { timeout:10000 });
+  await page.evaluate(() => LF.rounds.myStats());
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("My stats")');
+  const ms = await page.textContent('#sheetBody');
+  check(/Fairways hit\s*100% \(1 of 1\)/.test(ms) && /Putts per hole\s*2\.00/.test(ms) && /OB per round\s*1\.0/.test(ms), 'My stats adds them up');
+  // The crew leaderboard (rounds reach the server with sync).
+  await page.evaluate(() => LF.sync.now());
+  await page.evaluate(() => LF.leaderboard());
+  await page.waitForSelector('#sheetBody table.board', { timeout:10000 }).catch(() => {});
+  check(/Ben/.test(await page.textContent('#sheetBody')) && /Tester/.test(await page.textContent('#sheetBody')), 'the leaderboard lists the crew');
+  await page.click('#sheetBody [data-act=tab][data-t=course]');
+  check(/Test Park/.test(await page.textContent('#sheetBody select')), 'and the best rounds per course');
+  // My bag: Destroyer fills in its numbers, and shows its best measured throw (328 ft, from part 19).
+  await page.evaluate(() => LF.bag.list());
+  await page.waitForSelector('#sheetBody [data-act=add]'); await page.click('#sheetBody [data-act=add]');
+  await page.waitForFunction(() => /molds from the/.test(document.getElementById('d-fg').textContent), null, { timeout:20000 }).catch(() => {});
+  await page.fill('#d-name', 'Destroyer'); await page.dispatchEvent('#d-name', 'change');
+  check(await page.inputValue('#d-speed') === '12' && await page.inputValue('#d-fade') === '3' && /Innova/.test(await page.inputValue('#d-brand')), 'a Flight Guide disc fills in its flight numbers: ' + await page.inputValue('#d-brand'));
+  await page.click('#sheetBody [data-act=save]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("My bag")');
+  const bag = await page.textContent('#sheetBody');
+  check(/Distance Drivers[\s\S]*Destroyer[\s\S]*12 · 5 · -1 · 3[\s\S]*328 ft/.test(bag), 'the bag lists it by type with flight numbers and its best throw');
+  await page.unroute('**/api.open-meteo.com/**');
 
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));

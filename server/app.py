@@ -29,7 +29,7 @@ COOKIE_SECURE = os.environ.get("LF_COOKIE_SECURE", "1") != "0"
 STATIC = os.environ.get("LF_STATIC")
 COOKIE = "lf_session"
 SESSION_DAYS = 90
-STORES = ("waypoints", "tracks", "drawings", "rounds", "throws")   # rounds / throws: disc golf
+STORES = ("waypoints", "tracks", "drawings", "rounds", "throws", "discs")   # rounds / throws / discs: disc golf
 LOGIN_FAILS, LOGIN_WINDOW = 8, 15 * 60
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
 
@@ -790,6 +790,87 @@ def delete_course(cid):
     db().execute("DELETE FROM courses WHERE id = ?", (cid,))
     db().commit()
     return jsonify(ok=True)
+
+
+# ---------- My bag's discs: the DiscJerkers Flight Guide, passed through ----------
+# discjerkers.com/flightguide's data (every mold: brand, category, speed/glide/turn/fade) isn't readable from other
+# sites by the browser, so the API fetches it and hands it on, kept 6 hours per worker (and the last good copy if
+# discjerkers.com doesn't answer).
+FLIGHTGUIDE_URL = os.environ.get("LF_FLIGHTGUIDE_URL", "https://discjerkers.com/data/flightguide.json")
+_fg = {"at": 0, "body": None}
+
+
+def fetch_flightguide():
+    import urllib.request
+    req = urllib.request.Request(FLIGHTGUIDE_URL, headers={"User-Agent": "LineFence/1 (+https://maps.dibberlab.me)"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+@app.get("/api/flightguide")
+def flightguide():
+    if not _fg["body"] or now() - _fg["at"] > 6 * 3600:
+        try:
+            d = fetch_flightguide()
+            if not isinstance(d, dict) or not isinstance(d.get("discs"), list) or not isinstance(d.get("brands"), list):
+                raise ValueError("not a flight guide")
+            _fg.update(at=now(), body=json.dumps(d, separators=(",", ":")))
+        except Exception:
+            if not _fg["body"]:
+                return err("The Flight Guide didn't answer. Try again in a bit.", 502)
+    resp = app.response_class(_fg["body"], mimetype="application/json")
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+
+# ---------- Leaderboard: the crew's finished rounds (approved accounts only) ----------
+# Built from the rounds people's phones already sync. A live round is in everyone's account who played it; it counts once
+# (by its live id). Players are the names on the scorecard, so "Ben" on Andrew's card and on Ben's own are the same player.
+@app.get("/api/leaderboard")
+@needs("approved")
+def leaderboard():
+    rows = db().execute("""SELECT i.data, u.name AS who FROM items i JOIN users u ON u.id = i.user_id
+                           WHERE i.store = 'rounds' AND i.deleted = 0 AND u.status = 'approved'""").fetchall()
+    seen, results = set(), []
+    for row in rows:
+        try:
+            r = json.loads(row["data"] or "{}")
+        except ValueError:
+            continue
+        if not r.get("finished") or not isinstance(r.get("holes"), list) or not isinstance(r.get("sides"), list):
+            continue
+        key = ("live", r["live"]) if r.get("live") else ("own", r.get("id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        pars = [h.get("par") or 3 for h in r["holes"] if isinstance(h, dict)]
+        for side in r["sides"]:
+            sc = (r.get("scores") or {}).get(side.get("id"))
+            if not isinstance(sc, list) or len(sc) != len(pars) or any(not isinstance(v, int) for v in sc):
+                continue   # only complete rounds count
+            results.append({"player": (side.get("name") or "?").strip()[:40], "course": (r.get("name") or "Disc golf")[:80],
+                            "holes": len(pars), "strokes": sum(sc), "diff": sum(sc) - sum(pars), "date": r["finished"],
+                            "aces": sum(1 for v in sc if v == 1), "team": bool(side.get("members"))})
+    week = (now() - 7 * 86400) * 1000
+    courses = {}
+    for x in sorted(results, key=lambda x: (x["diff"], x["strokes"], x["date"])):
+        courses.setdefault(x["course"], [])
+        if len(courses[x["course"]]) < 10:
+            courses[x["course"]].append(x)
+    players = {}
+    for x in results:
+        p = players.setdefault(x["player"].lower(), {"player": x["player"], "rounds": 0, "best": None, "sum": 0, "aces": 0, "week": 0, "last": 0})
+        p["rounds"] += 1; p["sum"] += x["diff"]; p["aces"] += x["aces"]; p["last"] = max(p["last"], x["date"])
+        p["week"] += 1 if x["date"] >= week else 0
+        if p["best"] is None or (x["diff"], x["strokes"]) < (p["best"]["diff"], p["best"]["strokes"]):
+            p["best"] = {"diff": x["diff"], "strokes": x["strokes"], "course": x["course"], "date": x["date"]}
+    out = []
+    for p in players.values():
+        p["avg"] = round(p.pop("sum") / p["rounds"], 1)
+        out.append(p)
+    out.sort(key=lambda p: (-p["rounds"], p["avg"]))
+    recent = sorted(results, key=lambda x: -x["date"])[:20]
+    return jsonify(courses=courses, players=out, recent=recent, rounds=len(seen))
 
 
 @app.get("/api/admin/users")

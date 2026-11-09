@@ -28,25 +28,33 @@ const branch = d => f => {
     `<span class="switch" title="Show on the map"><input type="checkbox" role="switch" data-fvis="${esc(f.path)}"${f.shown ? ' checked' : ''} aria-label="Show ${esc(f.path)} on map"><span class="knob"></span></span></div>` +
     (kids && isOpen ? f.kids.map(branch(d + 1)).join('') : '');
 };
+/* The two menus are swapped (Andrew's call): ☰ opens the actions (Play, add, measure, offline, saved: the old + panel,
+   moved here as it is, with the account at the top); + opens your content, folders and map (this list, rendered into
+   #toolsPanel each time it opens). */
+const plus = document.getElementById('toolsPanel'), actions = document.createElement('div');
+actions.id = 'menuActions';
+while(plus.firstChild) actions.appendChild(plus.firstChild);
+menu.insertBefore(actions, body); plus.appendChild(body);
+btn.setAttribute('aria-label', 'Menu: play, add, measure and your account');
+const tb = document.getElementById('toolsBtn'); tb.setAttribute('aria-label', 'Your content, folders and map'); tb.title = 'Your content, folders and map';
+
 async function render(){
-  const keep = menu.scrollTop;
+  const keep = plus.scrollTop;
   const u = LF.account.user(), ok = LF.account.approved();
   let c = null;
   let tree = [];
   try{ if(await LF.db.ready()){ c = await LF.items.counts(); tree = await LF.items.tree(); } }catch(e){}
   body.innerHTML =
-    `<button class="mi acct" data-m="account">${svg('user')}<span><b>${esc(u ? (u.name || u.email) : 'Sign in or create an account')}</b>` +
-      `<span class="small">${u ? (u.status === 'approved' ? (u.role === 'admin' ? 'Admin · ' : '') + 'signed in' : 'waiting for approval') : 'to save waypoints, tracks and drawings'}</span></span></button>` +
     '<h3>My content</h3>' +
     item('list', 'all', 'Everything', c && c.all) + item('waypoints', 'waypoints', 'Waypoints', c && c.waypoints) + item('tracks', 'tracks', 'Tracks', c && c.tracks) +
     item('line', 'line', 'Lines', c && c.line) + item('area', 'area', 'Areas', c && c.area) +
     (tree.length ? '<h3>Folders</h3><div class="mtree">' + tree.map(branch(0)).join('') + '</div>' : '') +
     '<h3>Map</h3>' + item('offline', 'offline', 'Offline areas') + item('layers', 'layers', 'Layers & base map') + item('photo', 'photo', 'Line up the aerial photo') +
     (u && u.role === 'admin' && ok ? '<h3>Admin</h3>' + item('dgcourses', 'basket', 'Disc golf courses') + item('admin', 'admin', 'Admin portal') : '') +
-    '<p class="small menu-foot">Line Fence · property lines, public land and your own marks. Not a survey.</p>';
-  menu.scrollTop = keep;
+    `<p class="small menu-foot">${LF.isDG ? esc(LF.APP.name) + ' · disc golf courses, rounds and throws.' : 'Line Fence · property lines, public land and your own marks.'} Not a survey.</p>`;
+  plus.scrollTop = keep;
 }
-function open(){ LF.closePanel(); LF.closeTools(); menu.hidden = false; scrim.hidden = false; btn.setAttribute('aria-expanded', 'true'); render(); menu.querySelector('.close').focus(); }
+function open(){ LF.closePanel(); LF.closeTools(); menu.hidden = false; scrim.hidden = false; btn.setAttribute('aria-expanded', 'true'); menu.querySelector('.close').focus(); }
 function close(){ menu.hidden = true; scrim.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
 btn.addEventListener('click', () => menu.hidden ? open() : close());
 scrim.addEventListener('click', close);
@@ -65,7 +73,7 @@ body.addEventListener('click', e => {
   const b = e.target.closest('[data-m]'); if(!b) return;
   const m = b.dataset.m;
   if(m === 'fexp'){ const v = b.dataset.v; opened.has(v) ? opened.delete(v) : opened.add(v); LF.prefs.set('menuFoldersOpen', Array.from(opened)); return render(); }
-  close();
+  LF.closeTools();
   if(m === 'account') return LF.account.sheet();
   if(m === 'admin'){ location.href = '/admin/'; return; }
   if(m === 'dgcourses') return LF.dgadmin.list();
@@ -77,6 +85,6 @@ body.addEventListener('click', e => {
   else if(m === 'folder') LF.items.list({ folder:b.dataset.v });
   else LF.items.list({ type:m });
 });
-LF.listen('account', () => { if(!menu.hidden) render(); });
-LF.menu = { open, close };
+LF.listen('account', () => { if(!plus.hidden) render(); });
+LF.menu = { open, close, render };
 })(window.LF);

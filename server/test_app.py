@@ -88,6 +88,24 @@ check(after["round"]["scores"] == {"a": [3, None], "b": [4, None]}, "two phones'
 check(stranger.get(f"/api/rounds/{lrid}?since={after['version']}").json.get("same") is True, "polling an unchanged round sends nothing new")
 check(J(stranger, "post", f"/api/rounds/{lrid}", {"scores": [{"side": "zz", "hole": 9, "value": 99}]}).json["round"]["scores"] == {"a": [3, None], "b": [4, None]}, "bad scores are ignored")
 check(stranger.get("/api/rounds/nope!").status_code == 404, "malformed round ids are refused")
+# Leaderboard: finished rounds from approved accounts; a live round in two accounts counts once; partial rounds don't.
+lb_round = lambda rid, live, scores, fin=1700000000000: {"store": "rounds", "id": rid, "updated": 5000, "data": {"id": rid, "name": "Tjader Acres", "live": live,
+    "holes": [{"n": 1, "par": 3}, {"n": 2, "par": 4}], "sides": [{"id": "a", "name": "Andy", "members": []}, {"id": "b", "name": "Ben", "members": []}],
+    "scores": scores, "finished": fin}}
+J(user, "post", "/api/sync", {"changes": [lb_round("lr1", "LIVE1", {"a": [3, 4], "b": [2, 4]}), lb_round("lr2", None, {"a": [4, 5], "b": [3, None]})]})
+J(admin, "post", "/api/sync", {"changes": [lb_round("lv-LIVE1", "LIVE1", {"a": [3, 4], "b": [2, 4]})]})
+check(stranger.get("/api/leaderboard").status_code == 401, "the leaderboard is for signed-in crew")
+lb = user.get("/api/leaderboard").json
+check(lb["rounds"] == 2 and [x["player"] for x in lb["courses"]["Tjader Acres"]] == ["Ben", "Andy", "Andy"], "a live round counts once and partial cards don't: " + str([(x["player"], x["diff"]) for x in lb["courses"]["Tjader Acres"]]))
+andy = next(p for p in lb["players"] if p["player"] == "Andy")
+check(andy["rounds"] == 2 and andy["best"]["diff"] == 0 and andy["avg"] == 1.0, "players get rounds, best and average vs par")
+# The Flight Guide passes through (stubbed here), and the last good copy stays if discjerkers.com stops answering.
+fg = {"snapshot": "2026-10-09", "cats": ["Distance Drivers"], "brands": [{"n": "Innova"}], "discs": [[61, "Destroyer", 0, 0, 12, 5, -1, 3]]}
+srv.fetch_flightguide = lambda: fg
+check(stranger.get("/api/flightguide").json["discs"][0][1] == "Destroyer", "the Flight Guide comes through the API")
+def _down(): raise OSError("down")
+srv.fetch_flightguide = _down; srv._fg["at"] = 0
+check(stranger.get("/api/flightguide").status_code == 200, "and the last copy stays when discjerkers.com is down")
 # Public disc golf courses: admins add them; anyone reads them.
 course = {"name": "Tjader Acres", "holes": [{"n": 1, "par": 3, "ft": 251, "line": [[45.7776, -92.4301], [45.7778, -92.4293]]},
                                          {"n": 2, "par": 4, "line": [[45.7779, -92.4290], [45.7781, -92.4288], [45.7785, -92.4285]], "anchors": [1]}]}

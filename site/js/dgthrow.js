@@ -89,7 +89,7 @@ function set(what, end){ st[what] = end; if(what === 'from') st.live = null; sho
 /* ---------- The result and saving ---------- */
 function result(){
   const d = geo.dist(st.from.ll, st.to.ll), acc = Math.sqrt(st.from.acc * st.from.acc + st.to.acc * st.to.acc);
-  const discs = prefs.get('dgDiscs', []);
+  const discs = Array.from(new Set(prefs.get('dgDiscs', []).concat(LF.bag ? LF.bag.names() : [])));   // recent first, then the bag
   bar.innerHTML = `<div class="cb-head"><span class="throw-dist">${ft(d)} ft</span><span class="small">± ${Math.max(1, ft(acc))} ft${st.from.label ? ' · from ' + esc(st.from.label) : ''}</span></div>
     <div class="row2"><input id="t-disc" list="t-discs" maxlength="40" placeholder="Disc (e.g. Destroyer)" value="${esc(discs[0] || '')}"><datalist id="t-discs">${discs.map(x => `<option value="${esc(x)}"></option>`).join('')}</datalist>
       <select id="t-kind">${KINDS.map(k => `<option${k === (prefs.get('dgKind', 'Backhand')) ? ' selected' : ''}>${k}</option>`).join('')}</select></div>

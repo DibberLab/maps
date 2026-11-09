@@ -142,6 +142,18 @@ site/                 the whole app: static files, no build step
   js/flavor.js        which app this is (Line Fence or the disc golf app) and dressing the page for it; see "Two apps".
   js/dgnear.js        Courses near me: every course on the disc golf layer, nearest first from GPS (map centre until it
                       answers), search by name across all; a tap opens the course (LF.discgolf.showCourse).
+  js/dgweather.js     weather for disc golf: Open-Meteo (api.open-meteo.com, no key), now + 6 hours, cached 10 min per ~1 km;
+                      block() on the course panel (#dg-wx), vsHole(): wind as headwind / tailwind / crosswind for a hole bearing.
+                      The scorecard (dgscore.js live()) shows the distance to the basket from GPS ('gps' fixes, LF.gps 'score'),
+                      a dashed line you → basket, and the wind on the hole; stopLive() when the card goes.
+  js/dgbag.js         My bag: LF.db 'discs' (DB v5; synced + backed up; server STORES has it) { name, brand, plastic, speed,
+                      glide, turn, fade, weight, color, inBag, cat, fg }. Molds and flight numbers from the DiscJerkers Flight
+                      Guide (discjerkers.com/data/flightguide.json, no CORS, so GET /api/flightguide passes it through, 6 h cache,
+                      last good copy kept). Groups by the guide's categories, flight path drawn from turn/fade, best throw per disc.
+  js/dgboard.js       Leaderboard: GET /api/leaderboard (approved): finished, complete rounds from approved accounts' synced
+                      'rounds' (a live round once, by live id); players by scorecard name: rounds, avg/best vs par, aces, week;
+                      best 10 per course; latest 20. My stats (dgscore.js myStats): my side (r.me / account name / first side),
+                      r.stats[hole] = { fw, putts, ob } tapped on the card (this phone's copy only).
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload
@@ -158,7 +170,9 @@ site/                 the whole app: static files, no build step
                       waterbody layer 12, GNIS_NAME + AREASQKM, LAKE_TIERS by area) and hamlets only where the base picture
                       has none (Aerial only, or z17+ close-up) so names aren't doubled; declutter() hides the lower-ranked
                       of two overlapping names (rank, then population/area).
-      js/menu.js      the main menu from the logo: account, content by type, the folder tree (LF.items.tree(): ▸ opens subfolders,
+      js/menu.js      MENUS ARE SWAPPED (Andrew): ☰ (#menuBtn) opens the actions (the old + panel's tools, moved into #menu as
+                      #menuActions, account entry on top; app.js handles their [data-tool] clicks there); + (#toolsBtn) opens
+                      #toolsPanel, into which menu.js moved #menuBody and render()s it on open. The list it renders: content by type, the folder tree (LF.items.tree(): ▸ opens subfolders,
                       the name opens LF.items.list({folder}) which includes subfolders, a switch hides/shows the whole branch via
                       LF.items.setFolderHidden; open branches in pref 'menuFoldersOpen'),
                       offline areas, layers, admin portal.
@@ -293,7 +307,7 @@ Needed for any future CSP or firewall allowlist:
 connect-src / img-src:
   services3.arcgis.com  services5.arcgis.com  services.arcgis.com  static.arcgis.com
   enterprise.gisdata.mn.gov  dnrmaps.wi.gov  basemap.nationalmap.gov
-  imageserver.gisdata.mn.gov  elevation.nationalmap.gov  imagery.nationalmap.gov  apps.fs.usda.gov
+  imageserver.gisdata.mn.gov  elevation.nationalmap.gov  imagery.nationalmap.gov  apps.fs.usda.gov  api.open-meteo.com
   tile.openstreetmap.org  nominatim.openstreetmap.org
 style-src: fonts.googleapis.com   font-src: fonts.gstatic.com
 script-src: 'self' (no inline scripts, no JSONP since Phase 1)

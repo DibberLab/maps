@@ -125,15 +125,16 @@ file.addEventListener('change', async () => {
 
 /* ---------- + button: tools menu ---------- */
 const tBtn = document.getElementById('toolsBtn'), tPanel = document.getElementById('toolsPanel');
-function tools(open){ tPanel.hidden = !open; tBtn.classList.toggle('on', open); tBtn.setAttribute('aria-expanded', String(open)); if(open) LF.closePanel(); }
+function tools(open){ tPanel.hidden = !open; tBtn.classList.toggle('on', open); tBtn.setAttribute('aria-expanded', String(open)); if(open){ LF.closePanel(); if(LF.menu){ LF.menu.close(); LF.menu.render(); } } }
 LF.closeTools = () => tools(false);
 tBtn.addEventListener('click', () => { if(LF.draw.active()) LF.draw.stop(); tools(tPanel.hidden); });
 document.getElementById('layersBtn').addEventListener('click', () => tools(false));
 map.on('click', () => { if(!tPanel.hidden) tools(false); });
-tPanel.addEventListener('click', e => {
+// The actions live in the ☰ menu (menu.js moved them there).
+document.getElementById('menu').addEventListener('click', e => {
   const b = e.target.closest('[data-tool]'); if(!b) return;
-  const t = b.dataset.tool; tools(false);
-  const NEED = { waypoint:'waypoints', track:'tracks', dgcourse:'disc golf courses', dgscore:'rounds', dgthrow:'throws', dgthrows:'throws', list:'waypoints, tracks and drawings', 'offline-save':'offline areas', 'offline-list':'offline areas' };
+  const t = b.dataset.tool; tools(false); if(LF.menu) LF.menu.close();
+  const NEED = { waypoint:'waypoints', track:'tracks', dgcourse:'disc golf courses', dgscore:'rounds', dgthrow:'throws', dgthrows:'throws', dgbag:'your bag', dgboard:'the leaderboard', list:'waypoints, tracks and drawings', 'offline-save':'offline areas', 'offline-list':'offline areas' };
   if(NEED[t] && !LF.account.require(NEED[t])) return;
   if(t === 'track'){ if(LF.track.recording()) flash('Already recording. Use Stop at the top.'); else LF.track.start(); }
   else if(t === 'list') LF.items.list();
@@ -142,6 +143,8 @@ tPanel.addEventListener('click', e => {
   else if(t === 'dgthrow') LF.throws.start();
   else if(t === 'dgthrows') LF.throws.list();
   else if(t === 'dgnear') LF.courses.near();
+  else if(t === 'dgbag') LF.bag.list();
+  else if(t === 'dgboard') LF.leaderboard();
   else if(t === 'offline-save') LF.offline.save();
   else if(t === 'offline-list') LF.offline.list();
   else LF.draw.start(t);

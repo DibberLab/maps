@@ -31,7 +31,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   });
 
   // 1. The save sheet frames the area and estimates its size.
-  await page.click('#toolsBtn'); await page.click('[data-tool=offline-save]');
+  await page.click('#menuBtn'); await page.click('[data-tool=offline-save]');
   await page.waitForFunction(() => /parcels\./.test(document.getElementById('o-est').textContent), null, { timeout: 20000 }).catch(() => {});
   const est = await page.textContent('#o-est');
   check(/About .*map tiles, [\d,]+ parcels/.test(est), 'estimate: ' + est);
@@ -85,7 +85,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
 
   // 4. Delete removes the data and the saved tiles.
   await page.evaluate(() => { window.confirm = () => true; });
-  await page.click('#toolsBtn'); await page.click('[data-tool=offline-list]');
+  await page.click('#menuBtn'); await page.click('[data-tool=offline-list]');
   await page.waitForSelector('[data-act=o-del]');
   await page.screenshot({ path: path.join(OUT, 'offline-list.png') });
   await page.click('[data-act=o-del]');

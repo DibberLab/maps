@@ -179,7 +179,7 @@ function open(c, holeRef){
       '<button class="btn" data-act="save">Save waypoint</button>' +
       (isAdmin() ? '<button class="btn" data-act="edit">Edit course</button>' : '') +
       (c.pub && !c.pinOnly && isAdmin() ? '<button class="btn danger" data-act="unpublish">Remove course</button>' : '') +
-      '</div>' + LF.shadeSwitch() +
+      '</div>' + LF.shadeSwitch() + '<div class="block wx" id="dg-wx"></div>' +
     (rows.length ? '<div class="block"><dl>' + rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl></div>' : '') +
     (i.description ? `<div class="block"><p class="notes">${esc(i.description)}</p></div>` : '') + table +
     (c.pub && !c.pinOnly ? '<p class="note">Hole layout added by Line Fence. Add it to your map to score rounds on it or change the holes.</p>' :
@@ -199,6 +199,7 @@ function open(c, holeRef){
         LF.api('DELETE', 'courses/' + c.pub).then(() => { LF.flash('Removed ' + c.name); LF.closeSheet(); refresh(); }).catch(e => LF.flash('Could not remove it: ' + e.message, 5000));
       if(act === 'hole'){ const h = holes.find(x => String(x.ref || '') === el.dataset.ref); if(h){ focus(h); el.parentNode.querySelectorAll('tr').forEach(r => r.classList.toggle('on', r === el)); } }
     } });
+  if(LF.weather) LF.weather.block(document.getElementById('dg-wx'), c.c);
   // The selected course: its outline (or hole lines) bold and cased, and a pulsing ring at the pin.
   (c.outline || []).forEach(r => LF.select.shape(r, { color:'#0f766e', weight:3, closed:true, fill:.1 }));
   if(!(c.outline || []).length) holes.forEach(x => LF.select.shape(x.line, { color:'#0f766e', weight:2 }));

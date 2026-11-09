@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Course directory (the disc golf layer's pins nationwide) from a CSV Andrew supplied.
+"""Course directory (the disc golf layer's pins nationwide) from the PDGA course directory (CSV Andrew supplied).
    python3 tools/import_courses.py [tools/data/courses.csv] [site/data/courses-us.json]
 CSV columns: id, name, city, state, zip, holeCount, rating, latitude, longitude. Output (compact, one row per course):
 {generated, source, count, fields, courses:[[id, name, lat, lng, holes, city, state, rating], ...]}
@@ -21,7 +21,7 @@ for r in csv.DictReader(open(src, encoding='utf-8-sig')):
     rating = float(r['rating']) if (r.get('rating') or '').strip() else None
     rows.append([r['id'].strip(), ' '.join(r['name'].split()), lat, lng, holes, (r.get('city') or '').strip(), (r.get('state') or '').strip(), rating])
 rows.sort(key=lambda x: (x[6], x[1]))
-json.dump({'generated': datetime.date.today().isoformat(), 'source': 'course list supplied by DiscJerkers', 'count': len(rows),
+json.dump({'generated': datetime.date.today().isoformat(), 'source': 'PDGA course directory', 'count': len(rows),
            'fields': ['id', 'name', 'lat', 'lng', 'holes', 'city', 'state', 'rating'], 'courses': rows},
           open(out, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(f'{len(rows)} courses -> {out}')

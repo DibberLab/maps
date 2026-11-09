@@ -34,13 +34,13 @@ function load(){
       data = d && d.courses.length ? d : { courses:[], counts:{ courses:0, with_holes:0 } };
       base = withDirectory(data.courses.slice(), dir); merge();
       note.textContent = d && d.courses.length ? `${d.counts.courses.toLocaleString('en-US')} courses, ${d.counts.with_holes} with hole layouts · OpenStreetMap, updated ${new Date(d.generated).toLocaleDateString('en-US')}` +
-        (mine.length ? ` · ${mine.length} added by Line Fence` : '') + (dir ? ` · ${dir.count.toLocaleString('en-US')} in the US course list` : '') : `${mine.length} courses added by Line Fence`;
+        (mine.length ? ` · ${mine.length} added by Line Fence` : '') + (dir ? ` · ${dir.count.toLocaleString('en-US')} from the PDGA course directory` : '') : `${mine.length} courses added by Line Fence`;
       build(); })
     .catch(() => { note.textContent = 'Course list not available yet.'; loading = null; });
   return loading;
 }
 
-/* ---------- The US course list (data/courses-us.json, tools/import_courses.py) ----------
+/* ---------- The PDGA course directory (data/courses-us.json, tools/import_courses.py) ----------
    Rows [id, name, lat, lng, holes, city, state, rating]. A course OpenStreetMap already has (same name nearby, or within
    250 m) keeps its entry and gains the hole count, town and rating; the rest become pins of their own. */
 function withDirectory(osm, dir){
@@ -50,7 +50,7 @@ function withDirectory(osm, dir){
     const c = [lat, lng], place = [city, state].filter(Boolean).join(', ');
     const hit = osm.find(o => Math.abs(o.c[0] - lat) < 0.05 && Math.abs(o.c[1] - lng) < 0.07 && (geo.dist(o.c, c) < 250 || sameCourse(o, { name, c })));
     if(hit){ if(!hit.n && holes) hit.n = holes; if(rating && !hit.rating) hit.rating = rating; hit.place = hit.place || place; return; }
-    out.push({ name, c, n:holes || null, rating, place, dir:id, src:'the US course list', located:'from the US course list' });
+    out.push({ name, c, n:holes || null, rating, place, dir:id, src:'the PDGA course directory', located:'from the PDGA course directory' });
   });
   return out;
 }

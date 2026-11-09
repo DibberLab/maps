@@ -154,6 +154,11 @@ site/                 the whole app: static files, no build step
                       'rounds' (a live round once, by live id); players by scorecard name: rounds, avg/best vs par, aces, week;
                       best 10 per course; latest 20. My stats (dgscore.js myStats): my side (r.me / account name / first side),
                       r.stats[hole] = { fw, putts, ob } tapped on the card (this phone's copy only).
+                      Formats: solo (just me), singles, teams. r.me = 's1' (the first side is always me; teams: my team =
+                      me + "My teammate(s)", named "Me & Ben"), r.meName; older rounds: meId() guesses, and the summary's
+                      "You're" picker sets r.me. My stats splits solo / singles / teams (Agg: rounds, avg, best, W–L–T when every
+                      side finished), With teammates (mates(): my side's members minus me) and Against (each other side).
+                      Leaderboard: a side with 2+ members is a team named by its sorted members ("Andy & Ben"), ranked in .teams.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

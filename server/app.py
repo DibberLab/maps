@@ -848,17 +848,26 @@ def leaderboard():
             sc = (r.get("scores") or {}).get(side.get("id"))
             if not isinstance(sc, list) or len(sc) != len(pars) or any(not isinstance(v, int) for v in sc):
                 continue   # only complete rounds count
-            results.append({"player": (side.get("name") or "?").strip()[:40], "course": (r.get("name") or "Disc golf")[:80],
-                            "holes": len(pars), "strokes": sum(sc), "diff": sum(sc) - sum(pars), "date": r["finished"],
-                            "aces": sum(1 for v in sc if v == 1), "team": bool(side.get("members"))})
+            members = [m.strip() for m in (side.get("members") or []) if isinstance(m, str) and m.strip()]
+            team = len(members) > 1   # a team is named by who was on it, so Andy & Ben is the same pair on any card
+            results.append({"player": " & ".join(sorted(members, key=str.lower)) if team else (side.get("name") or "?").strip()[:40],
+                            "course": (r.get("name") or "Disc golf")[:80], "holes": len(pars), "strokes": sum(sc),
+                            "diff": sum(sc) - sum(pars), "date": r["finished"], "aces": sum(1 for v in sc if v == 1), "team": team,
+                            "kind": "solo" if len(r["sides"]) == 1 or r.get("format") == "solo" else "team" if r.get("format") == "teams" else "singles"})
     week = (now() - 7 * 86400) * 1000
     courses = {}
     for x in sorted(results, key=lambda x: (x["diff"], x["strokes"], x["date"])):
         courses.setdefault(x["course"], [])
         if len(courses[x["course"]]) < 10:
             courses[x["course"]].append(x)
-    players = {}
+    players, teams = {}, {}
     for x in results:
+        if x["team"]:
+            t = teams.setdefault(x["player"].lower(), {"team": x["player"], "rounds": 0, "best": None, "sum": 0, "last": 0})
+            t["rounds"] += 1; t["sum"] += x["diff"]; t["last"] = max(t["last"], x["date"])
+            if t["best"] is None or (x["diff"], x["strokes"]) < (t["best"]["diff"], t["best"]["strokes"]):
+                t["best"] = {"diff": x["diff"], "strokes": x["strokes"], "course": x["course"], "date": x["date"]}
+            continue
         p = players.setdefault(x["player"].lower(), {"player": x["player"], "rounds": 0, "best": None, "sum": 0, "aces": 0, "week": 0, "last": 0})
         p["rounds"] += 1; p["sum"] += x["diff"]; p["aces"] += x["aces"]; p["last"] = max(p["last"], x["date"])
         p["week"] += 1 if x["date"] >= week else 0
@@ -869,8 +878,13 @@ def leaderboard():
         p["avg"] = round(p.pop("sum") / p["rounds"], 1)
         out.append(p)
     out.sort(key=lambda p: (-p["rounds"], p["avg"]))
+    tout = []
+    for t in teams.values():
+        t["avg"] = round(t.pop("sum") / t["rounds"], 1)
+        tout.append(t)
+    tout.sort(key=lambda t: (t["avg"], -t["rounds"]))
     recent = sorted(results, key=lambda x: -x["date"])[:20]
-    return jsonify(courses=courses, players=out, recent=recent, rounds=len(seen))
+    return jsonify(courses=courses, players=out, teams=tout, recent=recent, rounds=len(seen))
 
 
 @app.get("/api/admin/users")

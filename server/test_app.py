@@ -99,6 +99,13 @@ lb = user.get("/api/leaderboard").json
 check(lb["rounds"] == 2 and [x["player"] for x in lb["courses"]["Tjader Acres"]] == ["Ben", "Andy", "Andy"], "a live round counts once and partial cards don't: " + str([(x["player"], x["diff"]) for x in lb["courses"]["Tjader Acres"]]))
 andy = next(p for p in lb["players"] if p["player"] == "Andy")
 check(andy["rounds"] == 2 and andy["best"]["diff"] == 0 and andy["avg"] == 1.0, "players get rounds, best and average vs par")
+team_round = {"store": "rounds", "id": "tr1", "updated": 5000, "data": {"id": "tr1", "name": "Memorial", "format": "teams",
+    "holes": [{"n": 1, "par": 3}], "sides": [{"id": "s1", "name": "Andy & Ben", "members": ["Andy", "Ben"]}, {"id": "s2", "name": "Sam & Jo", "members": ["Sam", "Jo"]}],
+    "scores": {"s1": [2], "s2": [3]}, "finished": 1700000001000}}
+J(user, "post", "/api/sync", {"changes": [team_round]})
+lb = user.get("/api/leaderboard").json
+check([t["team"] for t in lb["teams"]] == ["Andy & Ben", "Jo & Sam"] and not any(p["player"] in ("Andy & Ben", "Jo & Sam") for p in lb["players"]),
+      "team rounds rank the pairings on their own: " + str([(t["team"], t["avg"]) for t in lb["teams"]]))
 # The Flight Guide passes through (stubbed here), and the last good copy stays if discjerkers.com stops answering.
 fg = {"snapshot": "2026-10-09", "cats": ["Distance Drivers"], "brands": [{"n": "Innova"}], "discs": [[61, "Destroyer", 0, 0, 12, 5, -1, 3]]}
 srv.fetch_flightguide = lambda: fg

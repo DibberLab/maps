@@ -788,6 +788,41 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   check(/Distance Drivers[\s\S]*Destroyer[\s\S]*12 · 5 · -1 · 3[\s\S]*328 ft/.test(bag), 'the bag lists it by type with flight numbers and its best throw');
   await page.unroute('**/api.open-meteo.com/**');
 
+  // 24. Solo and team rounds, and stats with teammates and against opponents.
+  const playRound = async (setup, scoreAct) => {
+    await page.evaluate(() => LF.closeSheet());
+    await tool('dgscore'); await page.waitForSelector('#r-course');
+    await page.selectOption('#r-course', 'Disc Golf / Test Park');
+    await setup();
+    await page.click('#sheetBody [data-act=go]');
+    await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1")');
+    for(let h = 0; h < 2; h++){
+      if(scoreAct) await page.locator('#sheetBody .srow').first().locator(`[data-act=${scoreAct}]`).click();
+      await page.click(h === 0 ? '#sheetBody [data-act=next]' : '#sheetBody [data-act=finish]');
+      if(h === 0) await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 2")');
+    }
+    await page.waitForSelector('#sheetBody .sgrid', { timeout:10000 });
+    return page.evaluate(() => LF.db.all('rounds').then(rs => rs.sort((a, b) => b.started - a.started)[0]));
+  };
+  const solo = await playRound(async () => { await page.check('input[name=r-format][value=solo]'); });
+  check(solo.format === 'solo' && solo.sides.length === 1 && solo.me === 's1' && /Solo/.test(await page.textContent('#sheetHead')), 'a solo round is just me');
+  const team = await playRound(async () => {
+    await page.check('input[name=r-format][value=teams]');
+    await page.fill('#r-mates', 'Ben');
+    await page.fill('#r-add', 'Rivals'); await page.fill('#r-members', 'Sam, Jo'); await page.click('#sheetBody [data-act=add]');
+  }, 'dec');
+  check(team.format === 'teams' && team.sides[0].name === 'Tester & Ben' && JSON.stringify(team.sides[0].members) === '["Tester","Ben"]' && team.sides[1].name === 'Rivals',
+    'a team round: my team is me and my teammate, then the other team');
+  await page.evaluate(() => LF.rounds.myStats());
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("My stats")');
+  const st2 = await page.textContent('#sheetBody');
+  check(/Solo, head-to-head and team/.test(st2) && /With teammates\s*Teammate[\s\S]*Ben\s*1\s*[−+\-]?\d[\s\S]*1–0/.test(st2), 'My stats has a record with each teammate');
+  check(/Against[\s\S]*Rivals\s*1\s*1–0/.test(st2) && /Against[\s\S]*Ben\s*\d+\s*0–1/.test(st2), 'and against each opponent');
+  await page.evaluate(() => LF.sync.now());
+  await page.evaluate(() => LF.leaderboard());
+  await page.waitForSelector('#sheetBody [data-act=tab][data-t=teams]', { timeout:10000 }); await page.click('#sheetBody [data-act=tab][data-t=teams]');
+  check(/Ben & Tester/.test(await page.textContent('#sheetBody')), 'the leaderboard ranks team pairings');
+
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));

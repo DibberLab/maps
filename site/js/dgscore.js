@@ -50,11 +50,12 @@ async function start(){
       <div id="r-other"${cs.size || pubs.length ? ' hidden' : ''}><div class="row2"><label>Course name<input id="r-name" maxlength="60" placeholder="Course"></label>
         <label>Holes<select id="r-holes">${[9, 18, 27].map(n => `<option${n === 18 ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div></div>
       <div class="lbl">Format</div>
-      <div class="seg"><label><input type="radio" name="r-format" value="singles" checked> Singles</label><label><input type="radio" name="r-format" value="teams"> Teams</label></div>
-      <div class="lbl" id="r-who">Players</div>
+      <div class="seg"><label><input type="radio" name="r-format" value="solo"> Solo</label><label><input type="radio" name="r-format" value="singles" checked> Singles</label><label><input type="radio" name="r-format" value="teams"> Teams</label></div>
+      <div id="r-mates-box" hidden><label>My teammate(s)<input id="r-mates" maxlength="80" placeholder="Ben (more: Ben, Sam)"></label><p class="small">Your team is you and them. Then add the other teams below.</p></div>
+      <div id="r-players"><div class="lbl" id="r-who">Players</div>
       <div class="pchips" id="r-sides">${sideList()}</div>
       <div class="row2"><input id="r-add" maxlength="40" placeholder="Name"><input id="r-members" maxlength="80" placeholder="Team members (Ben, Sam)" hidden></div>
-      <div class="btnrow"><button type="button" class="btn" data-act="add">Add</button><span id="r-recent">${recentList()}</span></div>
+      <div class="btnrow"><button type="button" class="btn" data-act="add">Add</button><span id="r-recent">${recentList()}</span></div></div>
       <div class="btnrow acts"><button type="button" class="btn primary" data-act="go">Start round</button></div>
     </form>` +
     (past.length ? '<div class="block"><h3>Past rounds</h3><div class="rows">' + past.map(roundRow).join('') + '</div></div>' : ''),
@@ -71,6 +72,14 @@ async function start(){
         sides.push({ id:'s' + Date.now().toString(36) + sides.length, name:n, members }); $('r-add').value = ''; $('r-members').value = ''; redraw(); $('r-add').focus();
       }
       if(act === 'go'){
+        // Solo: just me. Teams: my team (me + my teammates) first, then the other teams. The first side is always me (r.me).
+        if(format === 'solo') sides = [{ id:'s1', name:me, members:[] }];
+        if(format === 'teams'){
+          const mates = $('r-mates').value.split(',').map(x => x.trim()).filter(Boolean);
+          if(!mates.length) return flash('Add your teammate');
+          sides = [{ id:'s1', name:[me].concat(mates).join(' & '), members:[me].concat(mates) }].concat(sides.filter(x => x.id !== 's1'));
+          if(sides.length < 2) return flash('Add the other team');
+        }
         if(!sides.length){ flash('Add a player or team'); return; }
         const folder = $('r-course').value;
         let holes, name;
@@ -78,8 +87,8 @@ async function start(){
         if(pc){ name = pc.name; holes = pc.holes.map((h, i) => ({ n:+h.n || i + 1, par:+h.par || 3, line:h.line })); }
         else if(folder){ name = LF.geo.folderPath(folder).pop(); holes = cs.get(folder).map((t, i) => ({ n:+t.dg.hole || i + 1, par:+t.dg.par || 3, trackId:t.id })); }
         else { name = $('r-name').value.trim() || 'Disc golf'; holes = Array.from({ length:+$('r-holes').value }, (_, i) => ({ n:i + 1, par:3 })); }
-        const r = { name, folder:pc ? null : folder || null, format, holes, sides, scores:Object.fromEntries(sides.map(s => [s.id, holes.map(() => null)])), hole:0, started:Date.now(), finished:null };
-        prefs.set('dgPlayers', Array.from(new Set(sides.map(s => s.name).concat(prefs.get('dgPlayers', [])))).slice(0, 30));
+        const r = { name, folder:pc ? null : folder || null, format, me:'s1', meName:me, holes, sides, scores:Object.fromEntries(sides.map(s => [s.id, holes.map(() => null)])), hole:0, started:Date.now(), finished:null };
+        prefs.set('dgPlayers', Array.from(new Set([].concat(...sides.map(s => s.members.length ? s.members : [s.name])).concat(prefs.get('dgPlayers', [])))).slice(0, 30));
         const saved = await db.put('rounds', r);
         card(saved); trackRound(saved);
       }
@@ -88,7 +97,12 @@ async function start(){
   sel.addEventListener('change', () => { document.getElementById('r-other').hidden = !!sel.value; });
   document.querySelectorAll('input[name=r-format]').forEach(x => x.addEventListener('change', () => {
     format = x.value; const teams = format === 'teams';
-    document.getElementById('r-who').textContent = teams ? 'Teams' : 'Players';
+    document.getElementById('r-players').hidden = format === 'solo';
+    document.getElementById('r-mates-box').hidden = !teams;
+    if(teams) sides = sides.filter(x => x.id !== 's1');               // my team comes from "My teammate(s)"
+    else if(!sides.some(x => x.id === 's1')) sides.unshift({ id:'s1', name:me, members:[] });
+    document.getElementById('r-sides').innerHTML = sideList();
+    document.getElementById('r-who').textContent = teams ? 'Other teams' : 'Players';
     document.getElementById('r-members').hidden = !teams;
     document.getElementById('r-add').placeholder = teams ? 'Team name' : 'Name';
   }));
@@ -206,9 +220,11 @@ function summary(r){
     '<tr class="par"><td>Par</td>' + r.holes.map(h => `<td>${h.par}</td>`).join('') + `<td>${r.holes.reduce((a, h) => a + h.par, 0)}</td><td></td></tr>`;
   const rows = t.map(x => `<tr><td>${esc(x.s.name)}</td>` + r.scores[x.s.id].map((v, i) => `<td class="${v == null ? '' : v < r.holes[i].par ? 'under' : v > r.holes[i].par ? 'over' : ''}">${v == null ? '' : v}</td>`).join('') +
     `<td><b>${x.strokes}</b></td><td>${x.played ? vsPar(x.diff) : ''}</td></tr>`).join('');
-  LF.showSheet(`<h2>${esc(r.name)}</h2><div class="small">${when(r.started)} · ${r.format === 'teams' ? 'Teams' : 'Singles'}${r.finished ? '' : ' · in progress'}</div>`,
+  LF.showSheet(`<h2>${esc(r.name)}</h2><div class="small">${when(r.started)} · ${kindName(r)}${r.finished ? '' : ' · in progress'}</div>`,
     `<div data-round="${esc(r.id)}"></div>` + (winners.length && r.finished ? `<div class="block"><p class="winner">🏆 ${esc(winners.join(' & '))}${winners.length > 1 ? ' tie' : ' wins'} with ${best}</p></div>` : '') +
-    `<div class="sgrid-wrap"><table class="sgrid">${head}${rows}</table></div>${trackBlock(r)}
+    `<div class="sgrid-wrap"><table class="sgrid">${head}${rows}</table></div>${trackBlock(r)}` +
+    (r.sides.length > 1 ? `<label class="lbl">You're<select id="r-me">${r.sides.map(x => `<option value="${esc(x.id)}"${x.id === meId(r) ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+       <p class="small">Which one is you, for My stats.</p>` : '') + `
      <div class="btnrow acts">${r.finished ? '<button class="btn" data-act="reopen">Edit scores</button>' : '<button class="btn primary" data-act="reopen">Back to the hole</button>'}
        <button class="btn danger" data-act="del">Delete round</button></div>`,
     { back:{ label:'Rounds', go:start }, onClose:() => leaving(r.id), onAct: async act => {
@@ -223,6 +239,8 @@ function summary(r){
       if(act === 'track-drop' && confirm('Throw away the track of this round?')){ await LF.track.endFor(r.id, false); summary(r); }
       if(act === 'track-show'){ const t = await db.get('tracks', r.trackId); if(t) LF.items.open('tracks', t.id); else flash('That track was deleted'); }
     } });
+  const meSel = document.getElementById('r-me');
+  if(meSel) meSel.addEventListener('change', async () => { r.me = meSel.value; r = await db.put('rounds', r); flash('Saved'); });
   poll(r);
 }
 
@@ -309,14 +327,37 @@ const openLink = l => { if(l.round) join(l.round); };
 if(LF.fromLink && LF.fromLink.round) setTimeout(() => openLink(LF.fromLink), 400);
 window.addEventListener('hashchange', () => openLink(LF.share.parse(location.hash)));
 
+/* Solo (just me), singles (everyone for themselves) or teams. Older rounds without a format of 'solo' count as solo
+   when they have one side. */
+const kindOf = r => r.format === 'solo' || r.sides.length === 1 ? 'solo' : r.format === 'teams' ? 'team' : 'singles';
+const kindName = r => ({ solo:'Solo', singles:'Singles', team:'Teams' })[kindOf(r)];
+/* My teammates on a team round: my side's members minus me (my name on the card, or my account name). */
+function mates(r, me){
+  const side = r.sides.find(x => x.id === me); if(!side || !side.members.length) return [];
+  const u = LF.account && LF.account.user(), mine = [r.meName, u && u.name].filter(Boolean).map(x => x.trim().toLowerCase());
+  return side.members.filter(m => !mine.includes(m.trim().toLowerCase()));
+}
+
 /* ---------- My stats: every finished round, from my side's scores and the stats I kept ---------- */
+/* A running tally: rounds, total and best vs par, wins / losses / ties. */
+function Agg(name){ this.name = name; this.n = 0; this.sum = 0; this.best = null; this.w = 0; this.l = 0; this.t = 0; }
+Agg.prototype.add = function(diff, res){ if(diff != null){ this.n++; this.sum += diff; if(this.best == null || diff < this.best) this.best = diff; } if(res) this[res]++; };
 async function myStats(){
   const all = (await db.all('rounds')).filter(r => r.finished).sort((a, b) => b.finished - a.finished);
   let holes = 0, strokes = 0, par = 0, fwHit = 0, fwAll = 0, putts = 0, puttHoles = 0, ob = 0, obRounds = 0, aces = 0, birdies = 0, pars = 0, bogeys = 0;
   const best = new Map(), rows = [];
+  const kinds = { solo:new Agg(), singles:new Agg(), team:new Agg() }, withMate = new Map(), vsOpp = new Map();
   all.forEach(r => {
     const me = meId(r); if(!me || !r.scores[me]) return;
     const sc = r.scores[me], t = totals(r, me), full = sc.every(v => v != null);
+    // Results: a round counts for a record only when every side finished every hole.
+    const complete = r.sides.every(x => (r.scores[x.id] || []).every(v => v != null));
+    const res = other => { const a = totals(r, me).strokes, b = totals(r, other).strokes; return a < b ? 'w' : a > b ? 'l' : 't'; };
+    const others = r.sides.filter(x => x.id !== me), k = kindOf(r);
+    const outcome = !complete || !others.length ? null : others.every(o => res(o.id) === 'w') ? 'w' : others.some(o => res(o.id) === 'l') ? 'l' : 't';
+    if(full) kinds[k].add(t.diff, outcome);
+    if(k === 'team' && full) mates(r, me).forEach(m => { const key = m.toLowerCase(); if(!withMate.has(key)) withMate.set(key, new Agg(m)); withMate.get(key).add(t.diff, outcome); });
+    if(complete) others.forEach(o => { const n = o.name, key = n.toLowerCase(); if(!vsOpp.has(key)) vsOpp.set(key, new Agg(n)); vsOpp.get(key).add(null, res(o.id)); });
     sc.forEach((v, i) => { if(v == null) return; holes++; strokes += v; par += r.holes[i].par; const d = v - r.holes[i].par;
       if(v === 1) aces++; else if(d <= -1) birdies++; else if(d === 0) pars++; else if(d === 1) bogeys++; });
     const st = r.stats || {}; let kept = false;
@@ -329,9 +370,19 @@ async function myStats(){
   const dl = [['Rounds', rows.length], ['Average per hole', holes ? vsPar(Math.round((strokes - par) / holes * 100) / 100).replace(/^E$/, 'even') + ' vs par' : '—'],
     ['Aces · birdies · pars · bogeys', `${aces} · ${birdies} · ${pars} · ${bogeys}`], ['Fairways hit', fwAll ? `${pct(fwHit, fwAll)} (${fwHit} of ${fwAll})` : '—'],
     ['Putts per hole', puttHoles ? (putts / puttHoles).toFixed(2) : '—'], ['OB per round', obRounds ? (ob / obRounds).toFixed(1) : '—']];
+  const rec = a => a.w + a.l + a.t ? `${a.w}–${a.l}${a.t ? '–' + a.t : ''}` : '—';
+  const avg = a => a.n ? (a.sum / a.n > 0 ? '+' : '') + (a.sum / a.n).toFixed(1) : '—';
+  const kindTable = '<div class="block"><h3>Solo, head-to-head and team</h3><div class="sgrid-wrap"><table class="sgrid board"><tr><th></th><th>Rounds</th><th>Avg</th><th>Best</th><th>W–L</th></tr>' +
+    [['solo', 'Solo'], ['singles', 'Singles'], ['team', 'Teams']].map(([k, label]) => { const a = kinds[k];
+      return `<tr><td><b>${label}</b></td><td>${a.n}</td><td>${avg(a)}</td><td>${a.best == null ? '—' : vsPar(a.best)}</td><td>${k === 'solo' ? '' : rec(a)}</td></tr>`; }).join('') +
+    '</table></div><p class="small">Full rounds; Avg and Best are strokes vs par. W–L counts rounds where every side finished.</p></div>';
+  const mateTable = withMate.size ? '<div class="block"><h3>With teammates</h3><div class="sgrid-wrap"><table class="sgrid board"><tr><th>Teammate</th><th>Rounds</th><th>Avg</th><th>Best</th><th>W–L</th></tr>' +
+    Array.from(withMate.values()).sort((a, b) => b.n - a.n).map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${a.n}</td><td>${avg(a)}</td><td>${vsPar(a.best)}</td><td>${rec(a)}</td></tr>`).join('') + '</table></div></div>' : '';
+  const oppTable = vsOpp.size ? '<div class="block"><h3>Against</h3><div class="sgrid-wrap"><table class="sgrid board"><tr><th>Opponent</th><th>Rounds</th><th>W–L</th></tr>' +
+    Array.from(vsOpp.values()).sort((a, b) => (b.w + b.l + b.t) - (a.w + a.l + a.t)).map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${a.w + a.l + a.t}</td><td>${rec(a)}</td></tr>`).join('') + '</table></div></div>' : '';
   LF.showSheet('<h2>My stats</h2><div class="small">From your finished rounds' + (LF.account.user() ? ' as ' + esc(LF.account.user().name || '') : '') + '</div>',
     `<div class="block"><dl>${dl.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
-       <p class="small">Fairways, putts and OB count the holes where you tapped them on the scorecard.</p></div>` +
+       <p class="small">Fairways, putts and OB count the holes where you tapped them on the scorecard.</p></div>` + kindTable + mateTable + oppTable +
     (best.size ? '<div class="block"><h3>Best round per course</h3><dl>' + Array.from(best).map(([n, b]) => `<dt>${esc(n)}</dt><dd>${b.strokes} (${vsPar(b.diff)}) · ${when(b.at)}</dd>`).join('') + '</dl></div>' : '') +
     (rows.length ? '<div class="block"><h3>Rounds</h3><div class="rows">' + rows.join('') + '</div></div>' : '<p class="note">Finish a round to see stats here.</p>'),
     { back:{ label:'Rounds', go:start }, onAct: async (act, el) => { if(act === 'open-round'){ const r = await db.get('rounds', el.dataset.id); if(r) summary(r); } } });

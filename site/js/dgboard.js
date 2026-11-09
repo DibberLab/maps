@@ -20,7 +20,7 @@ async function board(){
 function render(d){
   const names = Object.keys(d.courses).sort();
   if(!course || !d.courses[course]) course = names[0] || null;
-  const tabs = ['crew', 'course', 'recent'].map(t => `<button class="btn small-btn${tab === t ? ' on' : ''}" data-act="tab" data-t="${t}">${({ crew:'Crew', course:'By course', recent:'Latest' })[t]}</button>`).join('');
+  const tabs = ['crew', 'teams', 'course', 'recent'].map(t => `<button class="btn small-btn${tab === t ? ' on' : ''}" data-act="tab" data-t="${t}">${({ crew:'Crew', teams:'Teams', course:'By course', recent:'Latest' })[t]}</button>`).join('');
   let body = '';
   if(!d.rounds) body = '<p class="note">No finished rounds yet. Score a round with the crew and finish it: it shows up here.</p>';
   else if(tab === 'crew'){
@@ -28,13 +28,18 @@ function render(d){
       d.players.map((p, i) => `<tr><td>${i + 1}</td><td><b>${esc(p.player)}</b></td><td>${p.rounds}</td><td>${p.avg > 0 ? '+' : ''}${p.avg}</td>` +
         `<td title="${esc(p.best.course)}">${vs(p.best.diff)}</td><td>${p.aces || ''}</td><td>${p.week || ''}</td></tr>`).join('') +
       '</table></div><p class="small">Avg and Best are strokes vs par per round. Week: rounds in the last 7 days.</p>';
+  } else if(tab === 'teams'){
+    body = (d.teams || []).length ? '<div class="sgrid-wrap"><table class="sgrid board"><tr><th></th><th>Team</th><th>Rounds</th><th>Avg</th><th>Best</th></tr>' +
+      d.teams.map((t, i) => `<tr><td>${i + 1}</td><td><b>${esc(t.team)}</b></td><td>${t.rounds}</td><td>${t.avg > 0 ? '+' : ''}${t.avg}</td><td title="${esc(t.best.course)}">${vs(t.best.diff)}</td></tr>`).join('') +
+      '</table></div><p class="small">Pairings from team rounds, best average first. A team is who was on it, whatever the team was called.</p>'
+      : '<p class="note">No team rounds yet. Start a round with Teams and finish it.</p>';
   } else if(tab === 'course'){
     body = `<label class="lbl">Course<select id="lb-course">${names.map(n => `<option${n === course ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` +
       '<div class="sgrid-wrap"><table class="sgrid board"><tr><th></th><th>Player</th><th>Score</th><th></th><th>Date</th></tr>' +
       (d.courses[course] || []).map((x, i) => `<tr><td>${i === 0 ? '🏆' : i + 1}</td><td><b>${esc(x.player)}</b></td><td>${x.strokes}</td><td>${vs(x.diff)}</td><td>${when(x.date)}</td></tr>`).join('') +
       '</table></div>';
   } else {
-    body = '<div class="rows">' + d.recent.map(x => `<div class="row"><span><b>${esc(x.player)}</b> · ${x.strokes} (${vs(x.diff)})<span class="small">${esc(x.course)} · ${when(x.date)}${x.aces ? ' · ace!' : ''}</span></span></div>`).join('') + '</div>';
+    body = '<div class="rows">' + d.recent.map(x => `<div class="row"><span><b>${esc(x.player)}</b> · ${x.strokes} (${vs(x.diff)})<span class="small">${esc(x.course)} · ${({ solo:'solo', singles:'singles', team:'team' })[x.kind] || ''} · ${when(x.date)}${x.aces ? ' · ace!' : ''}</span></span></div>`).join('') + '</div>';
   }
   LF.showSheet(`<h2>Leaderboard</h2><div class="small">${d.rounds} round${d.rounds === 1 ? '' : 's'} by the crew</div>`,
     `<div class="btnrow">${tabs}<button class="btn small-btn" data-act="mine">My stats</button></div>${body}`,

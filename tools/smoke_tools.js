@@ -823,6 +823,27 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForSelector('#sheetBody [data-act=tab][data-t=teams]', { timeout:10000 }); await page.click('#sheetBody [data-act=tab][data-t=teams]');
   check(/Ben & Tester/.test(await page.textContent('#sheetBody')), 'the leaderboard ranks team pairings');
 
+  // 25. Layouts: play part of a mapped course (from hole … to hole …), or any number of holes on an unmapped one.
+  await page.evaluate(() => LF.closeSheet());
+  await tool('dgscore'); await page.waitForSelector('#r-course');
+  await page.selectOption('#r-course', 'Disc Golf / Test Park');
+  await page.waitForSelector('#r-from');
+  check(/2 holes/.test(await page.textContent('#r-laynote')), 'a mapped course offers its layout: ' + (await page.textContent('#r-laynote')).trim());
+  await page.selectOption('#r-to', '0');
+  await page.click('#sheetBody [data-act=go]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1")');
+  const lay = await page.evaluate(() => LF.db.all('rounds').then(rs => rs.sort((a, b) => b.started - a.started)[0]));
+  check(lay.holes.length === 1 && lay.layout === '1–1' && /holes 1–1/.test(lay.name) && /hole 1 of 1/.test(await page.textContent('#sheetHead')), 'the round plays just that layout: ' + lay.name);
+  await page.evaluate(() => LF.closeSheet());
+  await tool('dgscore'); await page.waitForSelector('#r-course');
+  await page.selectOption('#r-course', 'Disc Golf / Test Park');
+  check(await page.inputValue('#r-to') === '0', 'the course remembers its last layout');
+  await page.selectOption('#r-course', '');
+  await page.fill('#r-name', 'Pine Bluff'); await page.click('#sheetBody [data-act=nholes][data-n="13"]');
+  await page.click('#sheetBody [data-act=go]');
+  await page.waitForSelector('#sheet:not([hidden]) h2:has-text("Hole 1")');
+  check(/hole 1 of 13/.test(await page.textContent('#sheetHead')), 'an unmapped course can be 13 holes');
+
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));

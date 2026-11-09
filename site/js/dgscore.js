@@ -48,7 +48,9 @@ async function start(){
         ${pubs.map(p => `<option value="pub:${esc(p.id)}">${esc(p.name)} · ${p.holes.length} holes</option>`).join('')}
         <option value="">Another course (not mapped)</option></select></label>
       <div id="r-other"${cs.size || pubs.length ? ' hidden' : ''}><div class="row2"><label>Course name<input id="r-name" maxlength="60" placeholder="Course"></label>
-        <label>Holes<select id="r-holes">${[9, 18, 27].map(n => `<option${n === 18 ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div></div>
+        <label>Holes<input id="r-holes" type="number" inputmode="numeric" min="1" max="36" value="${prefs.get('dgHolesN', 18)}"></label></div>
+        <div class="btnrow">${[9, 10, 13, 18, 27].map(n => `<button type="button" class="btn small-btn" data-act="nholes" data-n="${n}">${n}</button>`).join('')}</div></div>
+      <div id="r-layout"></div>
       <div class="lbl">Format</div>
       <div class="seg"><label><input type="radio" name="r-format" value="solo"> Solo</label><label><input type="radio" name="r-format" value="singles" checked> Singles</label><label><input type="radio" name="r-format" value="teams"> Teams</label></div>
       <div id="r-mates-box" hidden><label>My teammate(s)<input id="r-mates" maxlength="80" placeholder="Ben (more: Ben, Sam)"></label><p class="small">Your team is you and them. Then add the other teams below.</p></div>
@@ -63,6 +65,8 @@ async function start(){
       const $ = id => document.getElementById(id), redraw = () => { $('r-sides').innerHTML = sideList(); $('r-recent').innerHTML = recentList(); };
       if(act === 'open-round'){ const r = await db.get('rounds', el.dataset.id); if(r) (r.finished ? summary(r) : card(r)); }
       if(act === 'stats') return myStats();
+      if(act === 'nholes'){ $('r-holes').value = el.dataset.n; }
+      if(act === 'lay'){ $('r-from').value = el.dataset.a; $('r-to').value = el.dataset.b; layoutNote(); }
       if(act === 'board') return LF.leaderboard();
       if(act === 'rm'){ sides.splice(+el.dataset.i, 1); redraw(); }
       if(act === 'quick'){ sides.push({ id:'s' + Date.now().toString(36) + sides.length, name:el.dataset.n, members:[] }); redraw(); }
@@ -86,15 +90,43 @@ async function start(){
         const pc = folder.startsWith('pub:') && pubs.find(p => 'pub:' + p.id === folder);
         if(pc){ name = pc.name; holes = pc.holes.map((h, i) => ({ n:+h.n || i + 1, par:+h.par || 3, line:h.line })); }
         else if(folder){ name = LF.geo.folderPath(folder).pop(); holes = cs.get(folder).map((t, i) => ({ n:+t.dg.hole || i + 1, par:+t.dg.par || 3, trackId:t.id })); }
-        else { name = $('r-name').value.trim() || 'Disc golf'; holes = Array.from({ length:+$('r-holes').value }, (_, i) => ({ n:i + 1, par:3 })); }
-        const r = { name, folder:pc ? null : folder || null, format, me:'s1', meName:me, holes, sides, scores:Object.fromEntries(sides.map(s => [s.id, holes.map(() => null)])), hole:0, started:Date.now(), finished:null };
+        else { const n = Math.max(1, Math.min(36, Math.round(+$('r-holes').value || 18))); prefs.set('dgHolesN', n);
+          name = $('r-name').value.trim() || 'Disc golf'; holes = Array.from({ length:n }, (_, i) => ({ n:i + 1, par:3 })); }
+        // The layout: holes from … to … of a mapped course. A part of a course is its own course for bests and the leaderboard.
+        let layout = null;
+        if(folder){
+          const a = +$('r-from').value, b = +$('r-to').value, lo = Math.min(a, b), hi = Math.max(a, b);
+          if(lo > 0 || hi < holes.length - 1){ layout = `${holes[lo].n}–${holes[hi].n}`; holes = holes.slice(lo, hi + 1); name += ` · holes ${layout}`; }
+          const lays = prefs.get('dgLayouts', {}); lays[folder] = [lo, hi]; prefs.set('dgLayouts', lays);
+        }
+        const r = { name, layout, folder:pc ? null : folder || null, format, me:'s1', meName:me, holes, sides, scores:Object.fromEntries(sides.map(s => [s.id, holes.map(() => null)])), hole:0, started:Date.now(), finished:null };
         prefs.set('dgPlayers', Array.from(new Set([].concat(...sides.map(s => s.members.length ? s.members : [s.name])).concat(prefs.get('dgPlayers', [])))).slice(0, 30));
         const saved = await db.put('rounds', r);
         card(saved); trackRound(saved);
       }
     } });
   const sel = document.getElementById('r-course');
-  sel.addEventListener('change', () => { document.getElementById('r-other').hidden = !!sel.value; });
+  /* Layout: which of the course's holes this round plays (all, a front or back nine, or from … to …). */
+  const courseHoles = f => { if(!f) return null; if(f.startsWith('pub:')){ const p = pubs.find(x => 'pub:' + x.id === f); return p ? p.holes.map(h => +h.n || h.n) : null; }
+    return cs.get(f) ? cs.get(f).map((t, i) => +t.dg.hole || i + 1) : null; };
+  const layoutNote = () => { const f = document.getElementById('r-from'), t = document.getElementById('r-to'), n = document.getElementById('r-laynote'); if(!f || !n) return;
+    const c = Math.abs(+t.value - +f.value) + 1; n.textContent = `${c} hole${c === 1 ? '' : 's'}`; };
+  const drawLayout = () => {
+    const f = sel.value, hs = courseHoles(f), box = document.getElementById('r-layout');
+    if(!hs || hs.length < 2){ box.innerHTML = ''; return; }
+    const last = hs.length - 1, saved = prefs.get('dgLayouts', {})[f] || [0, last];
+    const lo = Math.min(saved[0], last), hi = Math.min(saved[1], last);
+    const opt = sel => hs.map((n, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${n}</option>`).join('');
+    const quick = [['All ' + hs.length, 0, last]].concat(hs.length >= 18 ? [['1–9', 0, 8], ['10–18', 9, 17]] : hs.length >= 10 ? [['1–9', 0, 8]] : [])
+      .concat(hs.length > 18 ? [['1–18', 0, 17]] : []).concat(hs.length >= 27 ? [['10–27', 9, 26], ['19–27', 18, 26]] : []);
+    box.innerHTML = `<div class="lbl">Layout <span class="small" id="r-laynote"></span></div>
+      <div class="row2"><label>From hole<select id="r-from">${opt(lo)}</select></label><label>To hole<select id="r-to">${opt(hi)}</select></label></div>
+      <div class="btnrow">${quick.map(([l, a, b]) => `<button type="button" class="btn small-btn" data-act="lay" data-a="${a}" data-b="${b}">${l}</button>`).join('')}</div>`;
+    ['r-from', 'r-to'].forEach(id => document.getElementById(id).addEventListener('change', layoutNote));
+    layoutNote();
+  };
+  sel.addEventListener('change', () => { document.getElementById('r-other').hidden = !!sel.value; drawLayout(); });
+  drawLayout();
   document.querySelectorAll('input[name=r-format]').forEach(x => x.addEventListener('change', () => {
     format = x.value; const teams = format === 'teams';
     document.getElementById('r-players').hidden = format === 'solo';

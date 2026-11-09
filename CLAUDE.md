@@ -159,6 +159,9 @@ site/                 the whole app: static files, no build step
                       "You're" picker sets r.me. My stats splits solo / singles / teams (Agg: rounds, avg, best, W–L–T when every
                       side finished), With teammates (mates(): my side's members minus me) and Against (each other side).
                       Leaderboard: a side with 2+ members is a team named by its sorted members ("Andy & Ben"), ranked in .teams.
+                      Layouts: a mapped course plays holes "from … to …" (#r-from/#r-to, quick All / 1–9 / 10–18 / 1–18 / 10–27 /
+                      19–27; remembered per course in pref 'dgLayouts'); a partial layout sets r.layout '1–18' and names the round
+                      "<course> · holes 1–18", so it has its own bests and leaderboard. Unmapped courses: 1–36 holes (pref 'dgHolesN').
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

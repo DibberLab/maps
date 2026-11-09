@@ -20,7 +20,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
 
   await page.goto(BASE + '?app=dg#map=13/45.79/-92.42', { waitUntil:'domcontentloaded' });
   await page.waitForFunction(() => window.LF && LF.courses && LF.discgolf);
-  check(await page.evaluate(() => LF.isDG && document.title === LF.APP.name && /Disc/.test(document.getElementById('menuBtn').textContent)), 'the disc golf app has its own name');
+  check(await page.evaluate(() => LF.isDG && document.title === LF.APP.name && /First\s*Available/.test(document.getElementById('menuBtn').textContent)), 'the disc golf app has its own name');
   check(await page.evaluate(() => /manifest-dg\.json$/.test(document.querySelector('link[rel=manifest]').href)), 'and its own install manifest and icon');
   const on = await page.evaluate(() => LF.on);
   check(!on.parcels && on.trout && on.camp && on.padus && await page.isChecked('#l-discgolf'), 'starts with courses, campgrounds, trout water and public land on, property lines off');

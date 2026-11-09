@@ -450,3 +450,5 @@ form.edit label.check input{display:inline-block;width:20px;height:20px;margin:0
 .fab3{bottom:calc(132px + env(safe-area-inset-bottom,0px))}
 .app-dg #nearBtn{background:#0b3d2e;color:#facc15;border-color:#0b3d2e}
 .app-dg #nearBtn svg{stroke:#facc15}
+.app-dg .brand2{display:flex;flex-direction:column;font-size:15px;line-height:.98;letter-spacing:.05em}
+.app-dg .brand2 span{color:#facc15}

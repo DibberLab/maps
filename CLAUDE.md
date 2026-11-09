@@ -6,8 +6,8 @@ The map itself needs no server, build step or API key: the browser pulls all map
 
 ## Two apps, one codebase
 
-The same `site/` and API also serve a **disc golf app** at a discjerkers.com subdomain (name not settled yet; working
-name "Disc Golf"). `site/js/flavor.js` (loaded first) picks the face from the address: `*.discjerkers.com` → disc golf
+The same `site/` and API also serve a **disc golf app**, **First Available**, at firstavailable.discjerkers.com (named for the
+DiscJerkers lexicon: the tree four feet in front of the tee pad). `site/js/flavor.js` (loaded first) picks the face from the address: `*.discjerkers.com` → disc golf
 (`LF.isDG`, `LF.APP`), anything else → Line Fence; on test servers `?app=dg` / `?app=lf` (remembered). The disc golf face
 renames the page (title, brand, manifest-dg.json, icons/dg-*), starts with courses, campgrounds, trout water and public
 land on and property lines off (`APP.layers`, merged into map.js defaults), puts the disc golf tools ("Play") and the

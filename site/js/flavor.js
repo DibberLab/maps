@@ -8,7 +8,7 @@ window.LF = window.LF || {};
 (function(LF){
 'use strict';
 const DG = {
-  key:'dg', name:'Disc Golf', brand:['Disc', 'Golf'],   // working name; see DG.name
+  key:'dg', name:'First Available', brand:['First', 'Available'],   // firstavailable.discjerkers.com
   description:'Disc golf courses, scorecards and throw distances, with public land and trout water. Wisconsin and Minnesota.',
   manifest:'manifest-dg.json', icon:'icons/dg-icon.svg', touchIcon:'icons/dg-apple-touch-icon.png', theme:'#0b3d2e',
   search:'Course, town or address',
@@ -43,7 +43,7 @@ meta('link[rel=manifest]', 'href', APP.manifest);
 meta('link[rel=icon]', 'href', APP.icon);
 meta('link[rel=apple-touch-icon]', 'href', APP.touchIcon);
 const brand = `${APP.brand[0]}<span>·</span>${APP.brand[1]}`;
-const mb = $('#menuBtn'); if(mb) mb.innerHTML = '<i class="burger" aria-hidden="true"></i>' + brand;
+const mb = $('#menuBtn'); if(mb) mb.innerHTML = '<i class="burger" aria-hidden="true"></i>' + `<span class="brand2">${APP.brand[0]}<span>${APP.brand[1]}</span></span>`;   // two lines: a long name leaves room for search
 const bs = $('.menu-head .brand-sm'); if(bs) bs.innerHTML = brand;
 const q = $('#q'); if(q) q.placeholder = APP.search;
 

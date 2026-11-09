@@ -169,7 +169,7 @@ function open(c, holeRef){
       `</tbody></table><p class="small">${c.pub ? 'Lengths as listed for the course.' : 'Lengths are measured along the mapped hole line, tee to basket.'}</p></div>`
     : '<p class="small">No hole layout mapped for this course yet.</p>';
   const body = '<div class="btnrow acts">' +
-      `<button class="btn primary" data-act="zoom">Show course</button>` +
+      `<button class="btn primary" data-act="zoom">Show course</button>` + (LF.courseShare ? '<button class="btn" data-act="share-course">Share</button>' : '') +
       `<button class="btn" data-act="route">Directions</button>` +
       (web ? `<a class="btn" href="${esc(/^https?:/i.test(web) ? web : 'https://' + web)}" target="_blank" rel="noopener">Website</a>` : '') +
       /* UDisc: a direct link when we know the course page, otherwise a web search of udisc.com. */
@@ -194,6 +194,7 @@ function open(c, holeRef){
       if(act === 'route') LF.route.to(c.name, c.c);
       if(act === 'save' && LF.account.require('waypoints')) LF.items.newWaypoint(c.c, { name:c.name });
       if(act === 'copy') copyToMine(c);
+      if(act === 'share-course') LF.courseShare(c);
       if(act === 'edit') LF.dgadmin.editCourse(c);
       if(act === 'unpublish' && confirm(`Remove ${c.name} from the public course list? Copies people added to their maps stay.`))
         LF.api('DELETE', 'courses/' + c.pub).then(() => { LF.flash('Removed ' + c.name); LF.closeSheet(); refresh(); }).catch(e => LF.flash('Could not remove it: ' + e.message, 5000));

@@ -859,6 +859,29 @@ const LF_dist = (w, s) => { const R = 6371000, r = Math.PI / 180, dLa = (w.lat -
   await page.waitForFunction(id => LF.api('GET', 'courses').then(r => !r.courses.some(c => c.id === id)), pubd.id, { timeout:10000 }).catch(() => {});
   check(await page.evaluate(id => LF.api('GET', 'courses').then(r => !r.courses.some(c => c.id === id)), pubd.id), 'Remove course takes it off the public list');
 
+  // 27. Sharing: the scorecard as a picture + summary, a course as a link that opens it. (No share menu in a test
+  //     browser, so the Copy / Save picture pop-up shows what would be sent.)
+  await page.evaluate(() => { delete Navigator.prototype.share; delete Navigator.prototype.canShare; LF.closeSheet(); });
+  await page.evaluate(() => LF.db.all('rounds').then(rs => LF.rounds.summary(rs.filter(r => r.finished && r.sides.length > 1).sort((a, b) => b.started - a.started)[0])));
+  await page.waitForSelector('#sheetBody [data-act=share]'); await page.click('#sheetBody [data-act=share]');
+  await page.waitForSelector('#sendPop:not([hidden]) img.sendimg', { timeout:10000 });
+  const cardTxt = await page.inputValue('#sendPop textarea');
+  check(/🥏 .*Test Park/.test(cardTxt) && /\(([+−]\d+|E)\)/.test(cardTxt), 'Share scorecard makes a picture and a summary: ' + cardTxt.replace(/\n/g, ' | '));
+  await page.click('#sendPop [data-p=close]');
+  // A course: share it, then open the link.
+  await page.evaluate(() => LF.closeSheet());
+  const tp = await page.evaluate(() => LF.discgolf.data().courses.find(c => /Tjader Acres/.test(c.name)));
+  await page.evaluate(n => LF.discgolf.showCourse(LF.discgolf.data().courses.find(c => c.name === n)), tp.name);
+  await page.waitForSelector('#sheetBody [data-act=share-course]'); await page.click('#sheetBody [data-act=share-course]');
+  await page.waitForSelector('#sendPop:not([hidden])', { timeout:10000 });
+  const csent = await page.inputValue('#sendPop textarea');
+  check(new RegExp('🥏 ' + tp.name).test(csent) && /\/api\/s\/\w{6}/.test(csent), 'Share on a course sends its name, holes and a link');
+  await page.click('#sendPop [data-p=close]');
+  const shortUrl = csent.match(/https?:\/\/\S+\/api\/s\/\w{6}/)[0];
+  await page.goto('about:blank'); await page.goto(shortUrl, { waitUntil:'domcontentloaded' });
+  await page.waitForSelector('#sheet:not([hidden]) .tag.dg', { timeout:20000 }).catch(() => {});
+  check(new RegExp(tp.name).test(await page.textContent('#sheetHead')), 'the link opens that course');
+
   // Outside map servers sometimes fail a request; that's the network, not the app (smoke.js filters the same).
   const real = errors.filter(e => !/net::ERR_|Failed to fetch|(carto|hydro)\.nationalmap\.gov/.test(e));
   check(real.length === 0, 'no script errors' + (real.length ? ':\n  ' + real.join('\n  ') : ''));

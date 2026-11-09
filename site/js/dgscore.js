@@ -243,23 +243,41 @@ async function card(r){
   if(!len){ stopLive(); const d = document.getElementById('r-dist'); if(d) d.textContent = 'This hole isn\'t on the map, so no distance to the basket.'; }
 }
 
-/* ---------- Full card and result ---------- */
+/* ---------- Full card and result ----------
+   The card in rows of 9 holes so it fits a phone: 9 holes and the totals in one row; 18 and 27 stack, each row with its
+   own subtotal (Out / In / …), then a totals table. */
+function cardTables(r, t){
+  const cell = (v, par) => `<td class="${v == null ? '' : v === 1 ? 'ace' : v < par ? 'under' : v > par ? 'over' : ''}">${v == null ? '' : v}</td>`;
+  const chunks = []; for(let i = 0; i < r.holes.length; i += 9) chunks.push([i, Math.min(i + 9, r.holes.length)]);
+  const one = chunks.length === 1, label = (k, n) => n === 1 ? 'Tot' : n === 2 ? (k ? 'In' : 'Out') : 'Sub';
+  const sum = (arr, a, b) => arr.slice(a, b).reduce((x, v) => x + (v || 0), 0);
+  const parOf = (a, b) => r.holes.slice(a, b).reduce((x, h) => x + h.par, 0);
+  return chunks.map(([a, b], k) => {
+    const pad = 9 - (b - a), fill = n => '<td class="pad"></td>'.repeat(n), fillh = n => '<th class="pad"></th>'.repeat(n);
+    const head = '<tr><th>Hole</th>' + r.holes.slice(a, b).map(h => `<th>${h.n}</th>`).join('') + fillh(pad) + `<th>${label(k, chunks.length)}</th>${one ? '<th>±</th>' : ''}</tr>` +
+      '<tr class="par"><td>Par</td>' + r.holes.slice(a, b).map(h => `<td>${h.par}</td>`).join('') + fill(pad) + `<td>${parOf(a, b)}</td>${one ? '<td></td>' : ''}</tr>`;
+    const rows = t.map(x => { const sc = r.scores[x.s.id];
+      return `<tr><td class="who">${esc(x.s.name)}</td>` + sc.slice(a, b).map((v, i) => cell(v, r.holes[a + i].par)).join('') + fill(pad) +
+        `<td><b>${sum(sc, a, b) || ''}</b></td>${one ? `<td>${x.played ? vsPar(x.diff) : ''}</td>` : ''}</tr>`; }).join('');
+    return `<div class="sgrid-wrap"><table class="sgrid card9${one ? ' one' : ''}">${head}${rows}</table></div>`;
+  }).join('') + (one ? '' : '<div class="sgrid-wrap"><table class="sgrid totals"><tr><th>Total</th><th>Strokes</th><th>±</th><th>Holes</th></tr>' +
+    t.map(x => `<tr><td class="who">${esc(x.s.name)}</td><td><b>${x.strokes}</b></td><td>${x.played ? vsPar(x.diff) : ''}</td><td>${x.played}/${r.holes.length}</td></tr>`).join('') +
+    `<tr class="par"><td>Par</td><td>${parOf(0, r.holes.length)}</td><td></td><td></td></tr></table></div>`);
+}
 function summary(r){
   const t = r.sides.map(s => Object.assign({ s }, totals(r, s.id)));
   const best = Math.min(...t.filter(x => x.played).map(x => x.strokes));
   const winners = t.filter(x => x.played && x.strokes === best).map(x => x.s.name);
-  const head = '<tr><th>Hole</th>' + r.holes.map(h => `<th>${h.n}</th>`).join('') + '<th>Tot</th><th>±</th></tr>' +
-    '<tr class="par"><td>Par</td>' + r.holes.map(h => `<td>${h.par}</td>`).join('') + `<td>${r.holes.reduce((a, h) => a + h.par, 0)}</td><td></td></tr>`;
-  const rows = t.map(x => `<tr><td>${esc(x.s.name)}</td>` + r.scores[x.s.id].map((v, i) => `<td class="${v == null ? '' : v < r.holes[i].par ? 'under' : v > r.holes[i].par ? 'over' : ''}">${v == null ? '' : v}</td>`).join('') +
-    `<td><b>${x.strokes}</b></td><td>${x.played ? vsPar(x.diff) : ''}</td></tr>`).join('');
+  const grid = cardTables(r, t);
   LF.showSheet(`<h2>${esc(r.name)}</h2><div class="small">${when(r.started)} · ${kindName(r)}${r.finished ? '' : ' · in progress'}</div>`,
     `<div data-round="${esc(r.id)}"></div>` + (winners.length && r.finished ? `<div class="block"><p class="winner">🏆 ${esc(winners.join(' & '))}${winners.length > 1 ? ' tie' : ' wins'} with ${best}</p></div>` : '') +
-    `<div class="sgrid-wrap"><table class="sgrid">${head}${rows}</table></div>${trackBlock(r)}` +
-    (r.sides.length > 1 ? `<label class="lbl">You're<select id="r-me">${r.sides.map(x => `<option value="${esc(x.id)}"${x.id === meId(r) ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+    grid + `<div class="btnrow"><button class="btn primary" data-act="share">Share scorecard</button></div>${trackBlock(r)}` +
+    (r.sides.length > 1 ? `<label class="mepick">You're <select id="r-me">${r.sides.map(x => `<option value="${esc(x.id)}"${x.id === meId(r) ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
        <p class="small">Which one is you, for My stats.</p>` : '') + `
      <div class="btnrow acts">${r.finished ? '<button class="btn" data-act="reopen">Edit scores</button>' : '<button class="btn primary" data-act="reopen">Back to the hole</button>'}
        <button class="btn danger" data-act="del">Delete round</button></div>`,
     { back:{ label:'Rounds', go:start }, onClose:() => leaving(r.id), onAct: async act => {
+      if(act === 'share') return LF.scorecard && LF.scorecard.share(r);
       if(act === 'reopen'){ if(r.finished){ r.finished = null; r.hole = 0; r = await commit(r, [{ finished:null }]); } card(r); }
       if(act === 'del' && confirm(r.live ? 'Delete this round from this phone? Others who joined keep their copy.' : 'Delete this round?')){
         await LF.track.endFor(r.id, false); await db.del('rounds', r.id); flash('Round deleted'); start(); }

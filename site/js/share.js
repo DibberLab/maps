@@ -3,7 +3,8 @@
      #map=17/45.78012/-92.38011&pin=45.78012,-92.38011
    A shared link also carries the base map and layers:
      ...&base=hyb&layers=parcels,padus,widnr
-   and, when the panel showed a shared folder or one of its items, &share=<id>&item=<id>; &panel=min if it was tucked.
+   and, when the panel showed a shared folder or one of its items, &share=<id>&item=<id>; &panel=min if it was tucked;
+   a shared disc golf course adds &course=<name> (opened near the view).
    Pure parsing lives here; app.js wires it to the map. */
 window.LF = window.LF || {};
 (function(LF){
@@ -31,6 +32,7 @@ function parse(hash){
   if(id(q.get('item'))) out.item = q.get('item');       // …open on one of its items
   if(id(q.get('round'))) out.round = q.get('round');    // a live disc golf round to join
   if(q.get('panel') === 'min') out.tucked = true;       // the info panel was tucked down
+  const cn = q.get('course'); if(cn && cn.length <= 100) out.course = cn;   // a disc golf course to open (by name, near the view)
   return out;
 }
 
@@ -43,6 +45,7 @@ function build(s){
   if(s.share) parts.push('share=' + encodeURIComponent(s.share));
   if(s.item) parts.push('item=' + encodeURIComponent(s.item));
   if(s.tucked) parts.push('panel=min');
+  if(s.course) parts.push('course=' + encodeURIComponent(s.course));
   return parts.length ? '#' + parts.join('&') : '';
 }
 

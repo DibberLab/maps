@@ -162,6 +162,13 @@ site/                 the whole app: static files, no build step
                       Layouts: a mapped course plays holes "from … to …" (#r-from/#r-to, quick All / 1–9 / 10–18 / 1–18 / 10–27 /
                       19–27; remembered per course in pref 'dgLayouts'); a partial layout sets r.layout '1–18' and names the round
                       "<course> · holes 1–18", so it has its own bests and leaderboard. Unmapped courses: 1–36 holes (pref 'dgHolesN').
+  js/dgshare.js       sharing out (to a group chat or anywhere): LF.sendOut({title, text, url, file}) = the phone's share menu
+                      (with the picture when navigator.canShare({files})), else a #sendPop with Copy text / Save picture.
+                      LF.scorecard.share(r): a 1080-wide PNG of the card (canvas, rows of 9, totals, winner) + a text summary
+                      (+ the live round link). LF.courseShare(c): name, holes, par, weather now + a short link with
+                      #course=<name> (share.js), which opens that course (nearest of that name to the link's view).
+                      The on-screen card (dgscore.js cardTables) is rows of 9: 9 holes + Tot/± fit a phone; longer rounds
+                      stack with Out / In / Sub per row and a totals table.
   js/draw.js          tap-to-place waypoint, line, area, circle; sets LF.mode so taps don't trigger parcel lookups
   js/track.js         track recording: saves every 10 s with recording:true, Wake Lock, pause/resume,
                       an unfinished track comes back paused after a reload

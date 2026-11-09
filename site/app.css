@@ -476,3 +476,18 @@ form.edit label.check input{display:inline-block;width:20px;height:20px;margin:0
 .swatch.on{outline:3px solid var(--ink);outline-offset:2px}
 /* Leaderboard (dgboard.js) */
 .sgrid.board td,.sgrid.board th{text-align:left;padding:6px 8px}
+
+/* The scorecard on a phone: 9 holes and the totals in one row (dgscore.js cardTables). */
+.sgrid.card9{table-layout:fixed;width:100%;font-size:13px}
+.sgrid.card9 th,.sgrid.card9 td{padding:4px 0;min-width:0;overflow:hidden}
+.sgrid.card9 th:first-child,.sgrid.card9 td:first-child{width:4.6em;padding-left:4px;text-overflow:ellipsis;white-space:nowrap;position:static}
+.sgrid.card9 th:nth-last-child(1),.sgrid.card9 td:nth-last-child(1){width:2.4em}
+.sgrid.card9.one th:nth-last-child(2),.sgrid.card9.one td:nth-last-child(2){width:2.4em}
+.sgrid.card9 td.pad,.sgrid.card9 th.pad{background:var(--panel-2)}
+.sgrid td.ace{background:#facc15;color:#1f2b24;font-weight:800}
+.sgrid.totals{width:100%}
+.sgrid.totals td.who{max-width:9em;overflow:hidden;text-overflow:ellipsis}
+.sendimg{display:block;width:100%;max-height:45vh;object-fit:contain;border-radius:8px;margin:6px 0}
+#sendPop textarea{width:100%;font:14px var(--body);padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:inherit;margin:6px 0}
+.mepick{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-weight:600}
+.mepick select{font:15px var(--body);padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);color:inherit}

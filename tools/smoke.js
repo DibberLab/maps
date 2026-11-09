@@ -43,8 +43,9 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if(!ok
   await page.mouse.click(200, 450);
   await page.waitForSelector('#sheet:not([hidden])');
   await page.click('#shareBtn');
-  await page.waitForTimeout(300);
-  const copied = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
+  // The short link comes from the server first, so give the copy a moment (it used to be checked after 300 ms).
+  let copied = '';
+  for(let i = 0; i < 25 && !/\/api\/s\//.test(copied); i++){ await page.waitForTimeout(200); copied = await page.evaluate(() => navigator.clipboard.readText()).catch(() => ''); }
   check(/\/api\/s\/[A-Za-z0-9]{6}$/.test(copied), 'Share copies a short link: ' + copied);
   const full = (await page.request.get(copied, { maxRedirects:0 }).catch(() => null));
   const loc = full ? full.headers().location || '' : '';
